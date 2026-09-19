@@ -49,6 +49,10 @@ class AgentAnalyzeResponse(BaseModel):
     recommended_actions: list[RecommendedAction] = []
     activity: list[ActivityStep] = []
     latency_ms: int = 0
+    # Phase 5: how the answer was produced and which model assisted.
+    mode: str = "deterministic"  # "llm" | "deterministic"
+    model: str = ""
+    warnings: list[str] = []
 
 
 class SimulationRequest(BaseModel):

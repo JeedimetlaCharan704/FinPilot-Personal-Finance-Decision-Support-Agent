@@ -179,6 +179,8 @@ export default function Home() {
                   <p className="rounded-lg border border-dashed border-zinc-700 p-3 text-xs text-zinc-400">
                     Ask FinPilot anything about your money. Every answer is grounded in your
                     transactions — never invented. Evidence and calculations are shown with each reply.
+                    {" "}An AI model enhances explanations when configured; otherwise you get the
+                    same answers from the built-in deterministic engine.
                   </p>
                 )}
                 {messages.map((m, i) => (
@@ -563,6 +565,12 @@ function AgentDetailBlock({ agent }: { agent: AgentAnswer }) {
     <div className="mt-2 space-y-2 border-t border-zinc-700/60 pt-2 text-xs">
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="outline" className="text-[10px]">{agent.intent}</Badge>
+        <Badge variant={agent.mode === "llm" ? "default" : "secondary"} className="text-[10px]">
+          {agent.mode === "llm" ? `AI-assisted · ${agent.model || "llm"}` : "deterministic engine"}
+        </Badge>
+        {agent.warnings?.map((w, i) => (
+          <Badge key={i} variant="destructive" className="text-[10px]">{w.slice(0, 60)}</Badge>
+        ))}
         {agent.recommended_actions
           .filter((r) => r.action_type !== "none")
           .map((r) => (

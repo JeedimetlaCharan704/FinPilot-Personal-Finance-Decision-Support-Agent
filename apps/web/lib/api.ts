@@ -89,6 +89,9 @@ export interface AgentAnswer {
   assumptions: string[];
   recommended_actions: RecommendedAction[];
   activity: ActivityStep[];
+  mode: "llm" | "deterministic";
+  model: string;
+  warnings: string[];
 }
 
 export interface SimulationSnapshot {

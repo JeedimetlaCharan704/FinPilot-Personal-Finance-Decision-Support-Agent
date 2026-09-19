@@ -16,6 +16,19 @@ from app import db
 
 client = TestClient(app)
 
+
+@pytest.fixture(autouse=True)
+def disable_llm(monkeypatch):
+    """Integration tests must NEVER make paid LLM calls.
+
+    They validate the deterministic pipeline against the live Supabase
+    project; the LLM path is covered by mocked unit tests and the single
+    manual smoke test in Phase 5.
+    """
+    monkeypatch.setattr("app.services.orchestrator.get_provider", lambda: None)
+    yield
+
+
 QUESTIONS = [
     "Where did I spend the most this month?",
     "What changed compared with last month?",

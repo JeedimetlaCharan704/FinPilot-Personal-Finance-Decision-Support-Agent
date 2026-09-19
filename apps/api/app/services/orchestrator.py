@@ -13,6 +13,8 @@ import json
 import time
 
 from app import db
+from app.llm import LLMError, get_provider
+from app.llm.validation import VALID_INTENTS, is_ungrounded, validate_tool_plan
 from app.schemas import (
     ActivityStep, AgentAnalyzeResponse, CalculationItem, EvidenceItem,
     RecommendedAction,
@@ -42,28 +44,33 @@ def _clip(obj: dict, max_chars: int = 6000) -> dict:
 
 
 def run_agent(user_id: str, question: str) -> AgentAnalyzeResponse:
+    """Full agent run: classify -> plan -> deterministic execution -> respond.
+
+    Every stage prefers the LLM when a provider is configured, and falls back
+    to the deterministic Phase 4 engine on any LLM failure. Tools are ALWAYS
+    executed through the deterministic registry — the LLM never executes.
+    """
     started = time.perf_counter()
 
     user = db.get_user_by_id(user_id)
     if user is None:
         raise AgentAuthError("User not found")
 
-    intent_info = intents.plan_tools(question)
-    intent = intent_info["intent"]
-    tool_names = intent_info["tools"]
+    run_id = db.create_agent_run(user_id, question, intent=None)
+    activity: list[ActivityStep] = []
+    provider = _safe_provider()
 
-    run_id = db.create_agent_run(user_id, question, intent=intent)
-    activity: list[ActivityStep] = [
-        ActivityStep(step="Intent detected", tool=f"router ({intent})",
-                     latency_ms=1, status="completed",
-                     detail=f"confidence {intent_info['confidence']}")
-    ]
+    # --- 1. intent classification (LLM first, deterministic fallback) ---
+    intent, llm_classified = _classify(question, provider, activity)
 
+    # --- 2. tool planning (LLM first, deterministic fallback) ------------
+    tool_specs, llm_planned = _plan_tools(question, intent, provider, activity)
+
+    # --- 3. execute tools through the registry (deterministic, always) ---
     results: dict[str, dict] = {}
-    for tool_name in tool_names:
-        args: dict = {}
-        if tool_name == "get_transactions":
-            args = {"limit": 50}
+    for spec in tool_specs:
+        tool_name = spec["name"]
+        args: dict = spec.get("arguments") or {}
         call_start = time.perf_counter()
         call_id = db.create_agent_tool_call(run_id, tool_name, args)
         try:
@@ -71,10 +78,9 @@ def run_agent(user_id: str, question: str) -> AgentAnalyzeResponse:
             db.complete_agent_tool_call(call_id, _clip(out))
             results[tool_name] = out
             latency = int((time.perf_counter() - call_start) * 1000)
-            detail = _tool_detail(tool_name, out)
             activity.append(ActivityStep(step="Tool executed", tool=tool_name,
                                          latency_ms=latency, status="completed",
-                                         detail=detail))
+                                         detail=_tool_detail(tool_name, out)))
         except Exception as exc:  # pragma: no cover - defensive
             db.complete_agent_tool_call(call_id, {"error": str(exc)}, status="failed")
             results[tool_name] = {"error": str(exc)}
@@ -82,8 +88,19 @@ def run_agent(user_id: str, question: str) -> AgentAnalyzeResponse:
                                          latency_ms=int((time.perf_counter() - call_start) * 1000),
                                          status="failed", detail=str(exc)))
 
+    # --- 4. deterministic evidence/calculations (source of truth) --------
     payload = build_response(intent, question, results)
-    answer = payload["answer"]
+
+    # --- 5. final answer (LLM draft when possible, else deterministic) ---
+    llm_ok = provider is not None and provider.configured and llm_classified and llm_planned
+    if llm_ok:
+        answer, mode, model = _respond(provider, question, payload, results, activity)
+    else:
+        answer, mode, model = payload["answer"], "deterministic", ""
+        activity.append(ActivityStep(step="Response generated",
+                                     tool="responder (deterministic)",
+                                     latency_ms=1, status="completed",
+                                     detail=f"{len(payload['evidence'])} evidence items"))
 
     recommendations = _recommendations(user_id, results)
     for rec in recommendations:
@@ -97,19 +114,164 @@ def run_agent(user_id: str, question: str) -> AgentAnalyzeResponse:
     latency_ms = int((time.perf_counter() - started) * 1000)
     db.complete_agent_run(
         run_id, "completed",
-        final_response=json.dumps({"answer": answer, "intent": intent},
+        final_response=json.dumps({"answer": answer, "intent": intent,
+                                   "mode": mode, "model": model},
                                   default=str),
         started_at=None)
 
-    activity.append(ActivityStep(step="Response generated", tool="responder",
-                                 latency_ms=latency_ms, status="completed",
-                                 detail=f"{len(payload['evidence'])} evidence items"))
     return AgentAnalyzeResponse(
         run_id=run_id, intent=intent, answer=answer,
         insights=payload["insights"], evidence=payload["evidence"],
         calculations=payload["calculations"], assumptions=payload["assumptions"],
         recommended_actions=payload["recommended_actions"],
-        activity=activity, latency_ms=latency_ms)
+        activity=activity, latency_ms=latency_ms,
+        mode=mode, model=model, warnings=payload.get("warnings", []))
+
+
+def _safe_provider():
+    """Resolve the configured LLM provider without ever raising at runtime."""
+    try:
+        return get_provider()
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+def _classify(question, provider, activity) -> tuple[str, bool]:
+    """LLM classification with deterministic fallback.
+
+    Returns (intent, used_llm). Appends the 'Intent detected' activity step.
+    """
+    if provider is not None and provider.configured:
+        started = time.perf_counter()
+        try:
+            out = provider.classify(question)
+            # Defense in depth: the orchestrator re-validates the intent even
+            # if a provider implementation misbehaves.
+            if out is None or out.intent not in VALID_INTENTS:
+                raise LLMError("invalid intent from provider")
+            latency = int((time.perf_counter() - started) * 1000)
+            detail = f"confidence {out.confidence:g}" if out.confidence is not None else "llm"
+            activity.append(ActivityStep(step="Intent detected",
+                tool=f"router (llm:{provider.provider}:{provider.model})",
+                latency_ms=latency, status="completed", detail=detail))
+            return out.intent, True
+        except LLMError:
+            activity.append(ActivityStep(step="Intent detected", tool="router (llm)",
+                latency_ms=int((time.perf_counter() - started) * 1000),
+                status="completed",
+                detail="LLM classification failed -> deterministic fallback"))
+    info = intents.classify(question)
+    activity.append(ActivityStep(step="Intent detected", tool="router (deterministic)",
+                                 latency_ms=1, status="completed",
+                                 detail=f"confidence {info['confidence']:g}"))
+    return info["intent"], False
+
+
+def _plan_tools(question, intent, provider, activity) -> tuple[list[dict], bool]:
+    """LLM tool planning with deterministic fallback.
+
+    Returns (tool_specs, used_llm). plan_tools specs are
+    [{"name": str, "arguments": dict}] and are registry-validated upstream.
+    """
+    if provider is not None and provider.configured:
+        started = time.perf_counter()
+        try:
+            plan = provider.plan(question, intent)
+            if plan is None:
+                raise LLMError("plan is None")
+            # Defense in depth: re-validate the plan against the registry even
+            # if a provider implementation misbehaves (unknown tools/args).
+            revalidated = validate_tool_plan({
+                "intent": plan.intent,
+                "tools": [{"name": t.name, "arguments": dict(t.arguments)}
+                          for t in plan.tools]})
+            if revalidated is None:
+                raise LLMError("plan failed registry validation")
+            specs = [{"name": t.name, "arguments": dict(t.arguments)}
+                     for t in revalidated.tools]
+            latency = int((time.perf_counter() - started) * 1000)
+            activity.append(ActivityStep(step="Tool plan built",
+                tool=f"planner (llm:{provider.provider}:{provider.model})",
+                latency_ms=latency, status="completed",
+                detail=f"{len(specs)} tools"))
+            return specs, True
+        except LLMError:
+            activity.append(ActivityStep(step="Tool plan built", tool="planner (llm)",
+                latency_ms=int((time.perf_counter() - started) * 1000),
+                status="completed",
+                detail="LLM plan failed -> deterministic fallback"))
+    info = intents.plan_tools(question)
+    specs = [{"name": name,
+              "arguments": {"limit": 50} if name == "get_transactions" else {}}
+             for name in info["tools"]]
+    activity.append(ActivityStep(step="Tool plan built", tool="planner (deterministic)",
+                                 latency_ms=1, status="completed",
+                                 detail=f"{len(specs)} tools"))
+    return specs, False
+
+
+def _context_for_llm(payload: dict, results: dict) -> str:
+    """Compact verified context for the LLM responder (numbers only from tools)."""
+    summary = results.get("get_monthly_summary") or {}
+    ctx = {
+        "period": summary.get("period_label", ""),
+        "evidence": [{"label": e.label, "value": e.value, "detail": e.detail[:80]}
+                     for e in payload["evidence"]],
+        "calculations": [{"formula": c.formula, "value": c.value}
+                         for c in payload["calculations"]],
+        "insights": payload["insights"][:6],
+    }
+    text = json.dumps(ctx, default=str)
+    return text[:4000]
+
+
+def _grounding_context(payload: dict) -> str:
+    """All deterministic figures the LLM is allowed to cite."""
+    parts = [e.value for e in payload["evidence"]]
+    parts += [c.value for c in payload["calculations"]]
+    parts += payload["insights"]
+    return " ".join(str(p) for p in parts)
+
+
+def _respond(provider, question, payload, results, activity) -> tuple[str, str, str]:
+    """Draft the final answer with the LLM (1 retry), else deterministic.
+
+    Returns (answer, mode, model). The answer is only accepted when it passes
+    the evidence-grounding check (no invented figures).
+    """
+    context = _context_for_llm(payload, results)
+    grounding = _grounding_context(payload)
+    for attempt in (1, 2):
+        retry_note = "" if attempt == 1 else (
+            "Your previous reply was rejected because it cited figures absent "
+            "from the verified context or was malformed. Reply again using "
+            "ONLY the supplied figures, matching the JSON schema exactly.")
+        started = time.perf_counter()
+        try:
+            out = provider.respond(question, context, retry_note=retry_note)
+        except LLMError:
+            if attempt == 2:
+                break
+            continue
+        if out is None or not isinstance(out.answer, str) or not out.answer.strip():
+            if attempt == 2:
+                break
+            continue
+        if is_ungrounded(out.answer, grounding):
+            if attempt == 2:
+                break
+            continue
+        latency = int((time.perf_counter() - started) * 1000)
+        payload["warnings"] = list(out.warnings or [])
+        activity.append(ActivityStep(step="Response generated",
+            tool=f"responder (llm:{provider.provider}:{provider.model})",
+            latency_ms=latency, status="completed",
+            detail=f"{len(payload['evidence'])} evidence items"))
+        return out.answer, "llm", provider.model
+    activity.append(ActivityStep(step="Response generated",
+        tool="responder (deterministic)", latency_ms=1, status="completed",
+        detail=f"{len(payload['evidence'])} evidence items"))
+    return payload["answer"], "deterministic", ""
 
 
 def _tool_detail(tool_name: str, out: dict) -> str:

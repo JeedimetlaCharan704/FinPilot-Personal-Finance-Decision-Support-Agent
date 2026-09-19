@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_origins: str = "http://localhost:3000"
 
-    # --- LLM (Phase 3: config only; not wired yet) ---
+    # --- LLM (Phase 5: provider abstraction; xai or local ollama fallback) ---
     llm_provider: str = "xai"  # xai | ollama
     xai_api_key: str | None = None
     xai_model: str = "grok-4.5"
