@@ -31,6 +31,15 @@ def isolate_env(monkeypatch, request):
     yield
 
 
+@pytest.fixture(autouse=True)
+def clear_analytics_cache():
+    """Analytics uses a tiny TTL cache; clear it so unit fixtures never leak."""
+    from app.services import analytics
+    analytics._cache.clear()
+    yield
+    analytics._cache.clear()
+
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "integration: requires a live Supabase project")
 
