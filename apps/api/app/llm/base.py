@@ -6,6 +6,7 @@
 # for what may actually execute.
 from __future__ import annotations
 
+import datetime
 from abc import ABC, abstractmethod
 
 from app.llm.schemas import LLMAnswerOut, LLMIntentOut, LLMToolPlan
@@ -86,6 +87,8 @@ class LLMProvider(ABC):
             f"{MAX_AMOUNT:,.0f}.\n"
             "- 'limit' is an integer 1..1000; 'days' an integer 1..365; "
             "'year' an integer; 'month' 1..12.\n"
+            f"- The current year is {datetime.date.today().year}. If the user "
+            "names a month or period without a year, use the current year.\n"
             "- Reply with a JSON object only:\n"
             '{"intent": string, "reason": string, '
             '"tools": [{"name": string, "arguments": {}}]}\n'

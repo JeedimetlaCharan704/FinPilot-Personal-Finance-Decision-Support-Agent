@@ -48,4 +48,7 @@ Thumbs.db
 *.sqlite3
 *.db
 *.log
+*.log.err
+*.err
+*.out
 logs/
