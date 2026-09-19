@@ -1,10 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, ArrowDownRight, ArrowUpRight, BadgeCheck, BrainCircuit, Bot,
-  CheckCircle2, CircleDollarSign, FlaskConical, Landmark, Loader2, PieChart,
-  Send, Sparkles, Target, TrendingUp, Wallet, XCircle,
+  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, BadgeCheck,
+  BrainCircuit, Bot, CheckCircle2, ChevronDown, CircleDollarSign,
+  FlaskConical, Gauge, Info, Landmark, ListChecks, Loader2, PieChart,
+  Scale, Send, Sparkles, Target, TrendingUp, Wallet, XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,8 @@ import {
   API_BASE, approveAction, askAgent, fetchActions, fetchBudget, fetchGoals,
   fetchMonthly, fetchRecurring, fetchRuns, fetchUpcoming, inr, pct, rejectAction,
   runSimulation,
-  type ActionDraft, type AgentAnswer, type AgentRun, type BudgetStatus,
+  type ActionDraft, type ActivityStep, type AgentAnswer, type AgentRun,
+  type BudgetStatus, type DecisionGoalImpact, type DecisionScenario,
   type Goal, type MonthlyAnalytics,
   type RecurringAnalysis, type SimulationResult,
 } from "@/lib/api";
@@ -25,6 +27,13 @@ const QUESTION_CHIPS = [
   "How much am I committed to?",
   "Am I on track for my emergency fund?",
   "What happens if my rent increases by ₹2,000?",
+];
+
+const HERO_CHIPS = [
+  "Can I afford a ₹65,000 laptop next month?",
+  "Can I buy a 50000 phone next month?",
+  "Can I spend ₹20k on a trip next month?",
+  "Can I afford a ₹30,000 monitor?",
 ];
 
 const SIM_CARDS = [
@@ -53,6 +62,9 @@ export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+
+  // Phase 6 hero: dedicated natural-language purchase input.
+  const [heroInput, setHeroInput] = useState("");
 
   const [simType, setSimType] = useState("purchase");
   const [simName, setSimName] = useState("Laptop");
@@ -141,6 +153,15 @@ export default function Home() {
   const net = monthly?.net ?? 0;
   const savingsRate = monthly?.savings_rate ?? 0;
 
+  // The most recent agent reply that carries a structured affordability
+  // decision, used to render the hero decision card.
+  const lastDecision = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].agent?.decision) return messages[i].agent;
+    }
+    return null;
+  }, [messages]);
+
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <header className="sticky top-0 z-20 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur">
@@ -163,6 +184,65 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* ============ PHASE 6 HERO: "Can I afford this?" ============ */}
+      <section className="mx-auto max-w-7xl px-5 pt-6">
+        <div className="rounded-2xl border border-emerald-500/25 bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950 p-5 sm:p-7">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">
+              <Gauge className="mr-1 size-3" /> decision agent
+            </Badge>
+            <Badge variant="outline" className="text-zinc-400">
+              deterministic verdicts · AI explanations
+            </Badge>
+          </div>
+          <h2 className="mt-3 text-3xl font-black tracking-tight text-zinc-50 sm:text-4xl">
+            Can I afford <span className="text-emerald-400">this?</span>
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">
+            Your bank app tells you what you spent.{" "}
+            <span className="text-zinc-200">FinPilot tells you what you can do.</span>{" "}
+            Ask about a purchase, trip, subscription or any spending decision —
+            you get a verdict, comparison scenarios and goal impact, grounded in
+            your own transactions.
+          </p>
+          <form
+            className="mt-4 flex flex-col gap-2 sm:flex-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = heroInput.trim();
+              if (!q || thinking) return;
+              setHeroInput("");
+              ask(q);
+            }}
+          >
+            <input
+              value={heroInput}
+              onChange={(e) => setHeroInput(e.target.value)}
+              placeholder="Can I afford a ₹65,000 laptop next month?"
+              aria-label="Ask FinPilot about a purchase you are considering"
+              className="h-11 flex-1 rounded-xl border border-zinc-700 bg-zinc-950/80 px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-500/60 focus:outline-none"
+            />
+            <Button type="submit" disabled={thinking || !heroInput.trim()} className="h-11 sm:w-32">
+              {thinking ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Scale className="mr-1 size-4" />}
+              Ask
+            </Button>
+          </form>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {HERO_CHIPS.map((c) => (
+              <button
+                key={c}
+                onClick={() => ask(c)}
+                className="rounded-full border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-emerald-500/50 hover:text-emerald-300"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {lastDecision && <DecisionCard agent={lastDecision} />}
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="space-y-5">
@@ -568,6 +648,15 @@ function AgentDetailBlock({ agent }: { agent: AgentAnswer }) {
         <Badge variant={agent.mode === "llm" ? "default" : "secondary"} className="text-[10px]">
           {agent.mode === "llm" ? `AI-assisted · ${agent.model || "llm"}` : "deterministic engine"}
         </Badge>
+        {agent.decision && (
+          <Badge
+            variant={VERDICT_META[agent.decision.verdict]?.badge ?? "outline"}
+            className="gap-1 text-[10px]"
+          >
+            <span className={`inline-block size-1.5 rounded-full ${VERDICT_META[agent.decision.verdict]?.dot ?? "bg-zinc-400"}`} />
+            {VERDICT_META[agent.decision.verdict]?.label ?? agent.decision.verdict}
+          </Badge>
+        )}
         {agent.warnings?.map((w, i) => (
           <Badge key={i} variant="destructive" className="text-[10px]">{w.slice(0, 60)}</Badge>
         ))}
@@ -660,6 +749,263 @@ function RunRow({ run, expanded, onToggle }: {
           {answer}
         </pre>
       )}
+    </div>
+  );
+}
+
+/* ================= Phase 6 hero: "Can I afford this?" ================= */
+
+const fmtCash = (v: number | null | undefined): string => {
+  const n = Number(v ?? 0);
+  return n < 0 ? `−${inr(Math.abs(n))}` : inr(n);
+};
+
+const VERDICT_META: Record<string, {
+  badge: "default" | "secondary" | "destructive" | "outline";
+  dot: string; label: string;
+}> = {
+  AFFORDABLE: { badge: "default", dot: "bg-emerald-400", label: "AFFORDABLE" },
+  TIGHT: { badge: "secondary", dot: "bg-amber-400", label: "TIGHT" },
+  NOT_YET: { badge: "destructive", dot: "bg-rose-400", label: "NOT YET" },
+  INSUFFICIENT_DATA: { badge: "outline", dot: "bg-zinc-400", label: "INSUFFICIENT DATA" },
+};
+
+function Metric({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5">
+      <p className="truncate text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className={`mt-1 truncate text-sm font-bold ${tone}`}>{value}</p>
+    </div>
+  );
+}
+
+function DecisionCard({ agent }: { agent: AgentAnswer }) {
+  const d = agent.decision!;
+  const meta = VERDICT_META[d.verdict] ?? VERDICT_META.INSUFFICIENT_DATA;
+  const [showDetails, setShowDetails] = useState(true);
+  return (
+    <section className="mx-auto max-w-7xl px-5 pt-6">
+      <Card className="border-emerald-500/25 bg-zinc-900/70">
+        <CardContent className="space-y-5 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Gauge className="size-5 text-emerald-400" />
+              <span className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+                Decision
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={meta.badge} className="gap-1 text-[11px]">
+                <span className={`inline-block size-1.5 rounded-full ${meta.dot}`} />
+                {meta.label}
+              </Badge>
+              <Badge variant={agent.mode === "llm" ? "default" : "secondary"} className="text-[10px]">
+                {agent.mode === "llm" ? `AI-assisted · ${agent.model || "llm"}` : "deterministic engine"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Purchase amount</p>
+              <p className="text-3xl font-black tracking-tight text-zinc-50">{inr(d.purchase_amount)}</p>
+            </div>
+            <p className="max-w-xl text-sm leading-relaxed text-zinc-300">{agent.answer}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <Metric label="Projected income" value={inr(d.projected_income)} tone="text-zinc-100" />
+            <Metric label="Committed" value={inr(d.committed_outflows)} tone="text-amber-300" />
+            <Metric label="Normal spending" value={inr(d.normal_discretionary_spend)} tone="text-zinc-100" />
+            <Metric label="Free cash" value={inr(d.free_cash)} tone="text-emerald-300" />
+            <Metric label="Cash after purchase" value={fmtCash(d.cash_after_purchase)}
+              tone={d.cash_after_purchase < 0 ? "text-rose-300" : "text-emerald-300"} />
+            <Metric label="Months to save"
+              value={d.months_to_save !== null && d.months_to_save !== undefined ? `${d.months_to_save}` : "—"}
+              tone="text-sky-300" />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ScenarioBlock scenarios={d.scenarios} />
+            <GoalImpactBlock impacts={d.goal_impacts} />
+          </div>
+
+          <TraceFlow activity={agent.activity} />
+
+          <details className="rounded-lg bg-zinc-950/60 p-3" open={showDetails}>
+            <summary
+              onClick={(e) => { e.preventDefault(); setShowDetails(!showDetails); }}
+              className="flex cursor-pointer items-center justify-between text-xs font-medium text-zinc-300"
+            >
+              <span>Evidence & assumptions</span>
+              <ChevronDown className={`size-3.5 text-zinc-500 transition-transform ${showDetails ? "rotate-180" : ""}`} />
+            </summary>
+            {showDetails && (
+              <div className="mt-2 grid gap-3 lg:grid-cols-2">
+                <ul className="space-y-1 text-xs text-zinc-400">
+                  {agent.evidence.map((e, i) => (
+                    <li key={i} className="flex gap-1.5">
+                      <CheckCircle2 className="mt-0.5 size-3 shrink-0 text-emerald-500" />
+                      <span>
+                        <span className="text-zinc-300">{e.label}:</span> {e.value}
+                        {e.detail ? <span className="text-zinc-500"> · {e.detail}</span> : null}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <ul className="space-y-1 text-xs text-zinc-500">
+                  {d.assumptions.map((a, i) => (
+                    <li key={i}>— {a}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </details>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function ScenarioBlock({ scenarios }: { scenarios: DecisionScenario[] }) {
+  if (scenarios.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">
+        <ListChecks className="size-3.5" /> Compare scenarios
+      </p>
+      <div className="space-y-1.5">
+        {scenarios.map((s, i) => (
+          <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium text-zinc-200">{i + 1}. {s.label}</span>
+              <span className="text-xs font-bold text-zinc-100">{inr(s.amount)}</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+              <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-zinc-300">
+                cash after: {fmtCash(s.cash_after_purchase)}
+              </span>
+              {s.months_to_save !== null && s.months_to_save !== undefined && (
+                <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-zinc-300">
+                  {s.months_to_save} month{s.months_to_save > 1 ? "s" : ""} to save
+                </span>
+              )}
+              {s.goal_delay_months !== null && s.goal_delay_months !== undefined && (
+                <span className={`rounded-md px-1.5 py-0.5 ${
+                  s.goal_delay_months > 0
+                    ? "bg-rose-500/15 text-rose-300"
+                    : s.goal_delay_months < 0
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : "bg-zinc-800 text-zinc-400"
+                }`}>
+                  goal {s.goal_delay_months > 0 ? `+${s.goal_delay_months} mo` : s.goal_delay_months < 0 ? `${s.goal_delay_months} mo` : "no delay"}
+                </span>
+              )}
+            </div>
+            {s.detail && <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-500">{s.detail}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GoalImpactBlock({ impacts }: { impacts: DecisionGoalImpact[] }) {
+  const delayTxt = (d: number | null) => {
+    if (d === null || d === undefined) return "timeline unavailable";
+    if (d > 0) return `delayed by ${d} month${d > 1 ? "s" : ""}`;
+    if (d < 0) return `accelerated by ${-d} month${-d > 1 ? "s" : ""}`;
+    return "unchanged";
+  };
+  return (
+    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-300">
+        <Target className="size-3.5" /> Goal impact
+      </p>
+      <div className="space-y-1.5">
+        {impacts.length === 0 && <p className="text-xs text-zinc-500">No goals set up.</p>}
+        {impacts.map((g, i) => (
+          <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium text-zinc-200">{g.goal}</span>
+              <span className={`text-[10px] font-semibold ${
+                g.delay_months !== null && g.delay_months > 0
+                  ? "text-rose-300"
+                  : g.delay_months !== null && g.delay_months < 0
+                    ? "text-emerald-300"
+                    : "text-zinc-400"
+              }`}>
+                {delayTxt(g.delay_months)}
+              </span>
+            </div>
+            <p className="mt-1 text-[10px] text-zinc-500">
+              {g.months_baseline !== null
+                ? `${g.months_baseline} mo → ${g.months_after_purchase ?? "—"} mo`
+                : "no baseline"} · {inr(g.remaining)} remaining
+              {g.required_monthly_baseline !== null && g.required_monthly_scenario !== null && (
+                <> · required monthly {inr(g.required_monthly_baseline)} → {inr(g.required_monthly_scenario)}</>
+              )}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TraceFlow({ activity }: { activity: ActivityStep[] }) {
+  const nodes = activity.map((s) => {
+    const llm = s.tool.includes("llm:");
+    if (s.step === "Intent detected") {
+      return { icon: <BrainCircuit className="size-3" />, label: "Understand intent", detail: s.tool, tone: llm ? "text-emerald-300" : "text-zinc-400" };
+    }
+    if (s.step === "Tool plan built") {
+      return { icon: <ListChecks className="size-3" />, label: "Build tool plan", detail: s.tool, tone: llm ? "text-emerald-300" : "text-zinc-400" };
+    }
+    if (s.step === "Tool executed" && s.tool === "evaluate_affordability") {
+      return { icon: <Gauge className="size-3" />, label: "Deterministic simulation", detail: s.detail, tone: "text-violet-300" };
+    }
+    if (s.step === "Tool executed") {
+      return { icon: <FlaskConical className="size-3" />, label: "Run verified financial tools", detail: s.tool, tone: "text-zinc-400" };
+    }
+    if (s.step === "Tool failed") {
+      return { icon: <AlertTriangle className="size-3" />, label: `Tool failed — ${s.tool}`, detail: s.detail, tone: "text-rose-300" };
+    }
+    if (s.step === "Response generated") {
+      return { icon: <Sparkles className="size-3" />, label: "Grounded AI explanation", detail: s.tool, tone: llm ? "text-emerald-300" : "text-zinc-400" };
+    }
+    return { icon: <Info className="size-3" />, label: s.step, detail: s.tool, tone: "text-zinc-400" };
+  });
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        <Activity className="size-3.5" /> Agent trace
+      </p>
+      <ol className="space-y-2">
+        <li className="flex items-center gap-2 text-xs">
+          <span className="grid size-4 place-items-center rounded-full bg-zinc-800 text-zinc-300">
+            <CircleDollarSign className="size-3" />
+          </span>
+          <span className="text-zinc-300">Your question</span>
+          <span className="ml-auto text-[10px] text-zinc-600">natural language</span>
+        </li>
+        {nodes.map((n, i) => (
+          <li key={i} className="flex items-center gap-2 text-xs">
+            <span className="grid size-4 place-items-center rounded-full bg-zinc-800">
+              {n.icon}
+            </span>
+            <span className={n.tone}>{n.label}</span>
+            <span className="ml-auto max-w-[45%] truncate text-[10px] text-zinc-600">{n.detail}</span>
+          </li>
+        ))}
+        <li className="flex items-center gap-2 text-xs">
+          <span className="grid size-4 place-items-center rounded-full bg-emerald-500/15 text-emerald-400">
+            <BadgeCheck className="size-3" />
+          </span>
+          <span className="text-emerald-300">Verified decision delivered</span>
+          <span className="ml-auto text-[10px] text-zinc-600">grounded in deterministic evidence</span>
+        </li>
+      </ol>
     </div>
   );
 }

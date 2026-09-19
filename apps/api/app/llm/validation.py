@@ -38,6 +38,7 @@ TOOL_ALLOWED_ARGS: dict[str, frozenset[str]] = {
     "simulate_expense_change": frozenset({"amount"}),
     "calculate_committed_budget": frozenset({"year", "month"}),
     "get_upcoming_obligations": frozenset({"days"}),
+    "evaluate_affordability": frozenset({"amount"}),
 }
 
 
@@ -62,6 +63,10 @@ def _arg_valid(tool_name: str, key: str, value: Any) -> bool:
         if key in ("start_date", "end_date"):
             return isinstance(value, str) and 10 <= len(value) <= 10
     if tool_name == "simulate_expense_change":
+        if key == "amount":
+            return (isinstance(value, (int, float)) and not isinstance(value, bool)
+                    and 0 < float(value) <= MAX_AMOUNT)
+    if tool_name == "evaluate_affordability":
         if key == "amount":
             return (isinstance(value, (int, float)) and not isinstance(value, bool)
                     and 0 < float(value) <= MAX_AMOUNT)

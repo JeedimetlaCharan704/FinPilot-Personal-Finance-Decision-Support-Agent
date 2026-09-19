@@ -12,7 +12,7 @@ _INTENT_PATTERNS: list[tuple[str, re.Pattern, list[str]]] = [
     ("upcoming", re.compile(r"\b(upcoming|coming up|next payment|due soon|what.*pay)\b", re.I),
      ["get_upcoming_obligations", "get_recurring_payments"]),
     ("afford_purchase", re.compile(r"\b(can i afford|can we afford|should i (buy|get)|worth it|buy\b|purchase|laptop|iphone|bike|car|invest)\b", re.I),
-     ["calculate_committed_budget", "get_financial_goals", "simulate_expense_change"]),
+     ["evaluate_affordability", "calculate_committed_budget", "get_financial_goals"]),
     ("rent_increase", re.compile(r"\brent\b.{0,20}increas|increas.{0,20}rent\b|\brent (goes up|hike)\b|\brent.*hike", re.I),
      ["get_monthly_summary", "simulate_expense_change", "calculate_committed_budget"]),
     ("what_changed", re.compile(r"\b(changed|change|increased|increases|increase|compare|compared|versus|vs\b|last month|month over month|different|trend|go up|gone up|went up)\b", re.I),

@@ -81,6 +81,26 @@ export interface CalculationItem { formula: string; value: string; detail: strin
 export interface ActivityStep { step: string; tool: string; latency_ms: number; status: string; detail: string; }
 export interface RecommendedAction { id: string; action_type: string; title: string; description: string; }
 
+export interface DecisionGoalImpact {
+  goal: string; goal_id: string; target_amount: number; remaining: number;
+  progress_pct: number; months_baseline: number | null; months_after_purchase: number | null;
+  delay_months: number | null; impact: string;
+  required_monthly_baseline: number | null; required_monthly_scenario: number | null;
+}
+
+export interface DecisionScenario {
+  label: string; amount: number; cash_after_purchase: number | null;
+  months_to_save: number | null; goal_delay_months: number | null; detail: string;
+}
+
+export interface AffordDecision {
+  verdict: "AFFORDABLE" | "TIGHT" | "NOT_YET" | "INSUFFICIENT_DATA";
+  purchase_amount: number; projected_income: number; committed_outflows: number;
+  normal_discretionary_spend: number; free_cash: number; cash_after_purchase: number;
+  months_to_save: number | null; goal_impacts: DecisionGoalImpact[];
+  scenarios: DecisionScenario[]; assumptions: string[];
+}
+
 export interface AgentAnswer {
   run_id: string; intent: string; answer: string; latency_ms: number;
   insights: string[];
@@ -92,6 +112,7 @@ export interface AgentAnswer {
   mode: "llm" | "deterministic";
   model: string;
   warnings: string[];
+  decision: AffordDecision | null;
 }
 
 export interface SimulationSnapshot {

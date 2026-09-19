@@ -16,10 +16,10 @@ from app import db
 from app.llm import LLMError, get_provider
 from app.llm.validation import VALID_INTENTS, is_ungrounded, validate_tool_plan
 from app.schemas import (
-    ActivityStep, AgentAnalyzeResponse, CalculationItem, EvidenceItem,
-    RecommendedAction,
+    ActivityStep, AffordDecision, AgentAnalyzeResponse, CalculationItem,
+    DecisionGoalImpact, DecisionScenario, EvidenceItem, RecommendedAction,
 )
-from app.services import intents, tools
+from app.services import affordability, intents, tools
 
 
 class AgentAuthError(Exception):
@@ -65,6 +65,12 @@ def run_agent(user_id: str, question: str) -> AgentAnalyzeResponse:
 
     # --- 2. tool planning (LLM first, deterministic fallback) ------------
     tool_specs, llm_planned = _plan_tools(question, intent, provider, activity)
+
+    # Phase 6: for affordability questions the deterministic INR parser is
+    # authoritative for the purchase amount. Ensure exactly one
+    # evaluate_affordability call with the parsed amount (overrides any
+    # LLM-proposed amount; dropped entirely when no amount can be parsed).
+    tool_specs = _ensure_affordability_tool(tool_specs, intent, question)
 
     # --- 3. execute tools through the registry (deterministic, always) ---
     results: dict[str, dict] = {}
@@ -112,10 +118,15 @@ def run_agent(user_id: str, question: str) -> AgentAnalyzeResponse:
                               title=rec["title"], description=rec.get("description", "")))
 
     latency_ms = int((time.perf_counter() - started) * 1000)
+    verdict = ""
+    decision = payload.get("decision")
+    if decision is not None:
+        verdict = decision.verdict
     db.complete_agent_run(
         run_id, "completed",
         final_response=json.dumps({"answer": answer, "intent": intent,
-                                   "mode": mode, "model": model},
+                                   "mode": mode, "model": model,
+                                   "verdict": verdict},
                                   default=str),
         started_at=None)
 
@@ -125,7 +136,8 @@ def run_agent(user_id: str, question: str) -> AgentAnalyzeResponse:
         calculations=payload["calculations"], assumptions=payload["assumptions"],
         recommended_actions=payload["recommended_actions"],
         activity=activity, latency_ms=latency_ms,
-        mode=mode, model=model, warnings=payload.get("warnings", []))
+        mode=mode, model=model, warnings=payload.get("warnings", []),
+        decision=payload.get("decision"))
 
 
 def _safe_provider():
@@ -201,13 +213,42 @@ def _plan_tools(question, intent, provider, activity) -> tuple[list[dict], bool]
                 status="completed",
                 detail="LLM plan failed -> deterministic fallback"))
     info = intents.plan_tools(question)
-    specs = [{"name": name,
-              "arguments": {"limit": 50} if name == "get_transactions" else {}}
-             for name in info["tools"]]
+    amount = None
+    if intent == "afford_purchase":
+        amount = affordability.parse_purchase_amount(question)
+    specs = []
+    for name in info["tools"]:
+        if name == "evaluate_affordability" and amount is None:
+            continue  # no trusted amount -> no verdict tool this run
+        args = {"limit": 50} if name == "get_transactions" else {}
+        if name == "evaluate_affordability":
+            args = {"amount": amount}
+        specs.append({"name": name, "arguments": args})
     activity.append(ActivityStep(step="Tool plan built", tool="planner (deterministic)",
                                  latency_ms=1, status="completed",
                                  detail=f"{len(specs)} tools"))
     return specs, False
+
+
+def _ensure_affordability_tool(specs: list[dict], intent: str,
+                               question: str) -> list[dict]:
+    """Deterministic parser is authoritative for the purchase amount.
+
+    - afford_purchase + parseable amount -> exactly one evaluate_affordability
+      call with the parsed amount (any LLM-proposed amount is overridden).
+    - afford_purchase + unparseable amount -> the tool is dropped from the
+      plan (the LLM must never determine purchase amounts itself).
+    - other intents -> plan untouched.
+    """
+    if intent != "afford_purchase":
+        return specs
+    amount = affordability.parse_purchase_amount(question)
+    filtered = [s for s in specs if s["name"] != "evaluate_affordability"]
+    if amount is None:
+        return filtered
+    filtered.insert(0, {"name": "evaluate_affordability",
+                        "arguments": {"amount": amount}})
+    return filtered
 
 
 def _context_for_llm(payload: dict, results: dict) -> str:
@@ -221,6 +262,15 @@ def _context_for_llm(payload: dict, results: dict) -> str:
                          for c in payload["calculations"]],
         "insights": payload["insights"][:6],
     }
+    decision = payload.get("decision")
+    if decision is not None:
+        ctx["decision"] = {
+            "verdict": decision.verdict,
+            "purchase_amount": decision.purchase_amount,
+            "free_cash": decision.free_cash,
+            "cash_after_purchase": decision.cash_after_purchase,
+            "months_to_save": decision.months_to_save,
+        }
     text = json.dumps(ctx, default=str)
     return text[:4000]
 
@@ -305,6 +355,9 @@ def _tool_detail(tool_name: str, out: dict) -> str:
             return f"{out.get('count', 0)} transactions"
         if tool_name == "simulate_goal":
             return f"{out.get('count', 0)} goals"
+        if tool_name == "evaluate_affordability":
+            return (f"verdict {out.get('verdict', 'n/a')}, "
+                    f"free cash {_inr(out.get('free_cash', 0))}")
     except Exception:
         pass
     return "ok"
@@ -422,11 +475,25 @@ def build_response(intent: str, question: str, results: dict) -> dict:
         else:
             base["answer"] = "Not enough data to compare months yet."
 
-    elif intent in ("afford_purchase", "rent_increase"):
-        if intent == "rent_increase":
-            base["answer"] = _rent_answer(summary, budget, sim_change)
+    elif intent == "afford_purchase":
+        decision = (results.get("evaluate_affordability") or {})
+        if decision.get("has_data") and decision.get("verdict"):
+            _afford_decision_response(base, ev, calc, decision)
         else:
             base["answer"] = _afford_answer(summary, budget)
+            if budget.get("has_data"):
+                ev("Monthly income", _inr(budget.get("income", 0)))
+                ev("Committed", _inr(budget.get("committed", 0)))
+                ev("Spent", _inr(budget.get("spent", 0)))
+                ev("Discretionary", _inr(budget.get("discretionary", 0)))
+                calc("income - committed - spent",
+                     _inr(budget.get("discretionary", 0)), "discretionary cash")
+            base["assumptions"].append(
+                "This is an informational analysis, not financial advice.")
+            base["assumptions"].extend(budget.get("assumptions", []))
+
+    elif intent == "rent_increase":
+        base["answer"] = _rent_answer(summary, budget, sim_change)
         if budget.get("has_data"):
             ev("Monthly income", _inr(budget.get("income", 0)))
             ev("Committed", _inr(budget.get("committed", 0)))
@@ -513,6 +580,116 @@ def _overview_answer(summary: dict) -> str:
             f"leaving a net cash flow of {_inr(summary.get('net', 0))} "
             f"({summary.get('savings_rate', 0):.1f}% savings rate) with "
             f"{_inr(summary.get('committed', 0))} in recurring commitments.")
+
+
+def _signed(v: float) -> str:
+    """INR formatting that shows a leading minus for negative values."""
+    if float(v) < 0:
+        return f"\u2212{_inr(abs(float(v)))}"
+    return _inr(v)
+
+
+def _afford_decision_response(base: dict, ev, calc, decision: dict) -> None:
+    """Fill the deterministic afford_purchase response from the decision tool.
+
+    Every number shown is copied from the deterministic decision result —
+    the LLM never computes any of it.
+    """
+    base["answer"] = _afford_decision_answer(decision)
+    base["decision"] = _decision_model(decision)
+
+    amt = _inr(decision["purchase_amount"])
+    ev("Purchase amount", amt)
+    ev("Projected income", _inr(decision["projected_income"]))
+    ev("Committed outflows", _inr(decision["committed_outflows"]))
+    ev("Normal discretionary spend", _inr(decision["normal_discretionary_spend"]))
+    ev("Free cash flow", _inr(decision["free_cash"]),
+       "income minus actual spending")
+    ev("Cash after purchase", _signed(decision["cash_after_purchase"]),
+       "free cash flow minus purchase amount")
+    if decision.get("months_to_save"):
+        ev("Months to save", str(decision["months_to_save"]),
+           "purchase amount / free cash flow, rounded up")
+    for gi in decision.get("goal_impacts", []):
+        if gi.get("delay_months") is not None:
+            d = gi["delay_months"]
+            txt = (f"delayed by {d} month(s)" if d > 0
+                   else f"accelerated by {-d} month(s)" if d < 0
+                   else "unchanged")
+            ev(f"Goal impact · {gi['goal']}", txt,
+               f"{gi.get('months_baseline')} -> {gi.get('months_after_purchase')} months")
+
+    calc("income - actual spending", _inr(decision["free_cash"]),
+         "monthly free cash flow")
+    calc("free cash flow - purchase amount",
+         _signed(decision["cash_after_purchase"]))
+    if decision.get("months_to_save"):
+        calc("purchase amount / free cash flow (rounded up)",
+             f"{decision['months_to_save']} month(s)")
+
+    base["assumptions"].extend(decision.get("assumptions", []))
+    base["assumptions"].append(
+        "This is an informational analysis, not financial advice.")
+
+
+def _decision_model(decision: dict) -> AffordDecision:
+    return AffordDecision(
+        verdict=decision["verdict"],
+        purchase_amount=decision["purchase_amount"],
+        projected_income=decision["projected_income"],
+        committed_outflows=decision["committed_outflows"],
+        normal_discretionary_spend=decision["normal_discretionary_spend"],
+        free_cash=decision["free_cash"],
+        cash_after_purchase=decision["cash_after_purchase"],
+        months_to_save=decision.get("months_to_save"),
+        goal_impacts=[DecisionGoalImpact(**gi)
+                      for gi in decision.get("goal_impacts", [])],
+        scenarios=[DecisionScenario(**sc)
+                   for sc in decision.get("scenarios", [])],
+        assumptions=decision.get("assumptions", []),
+    )
+
+
+def _afford_decision_answer(decision: dict) -> str:
+    """Deterministic answer template; cites only decision figures."""
+    verdict = decision.get("verdict", "INSUFFICIENT_DATA")
+    period = decision.get("period") or "the latest month"
+    amt = _inr(decision["purchase_amount"])
+    free = _inr(decision.get("free_cash", 0))
+    income = _inr(decision.get("projected_income", 0))
+    committed = _inr(decision.get("committed_outflows", 0))
+    disc = _inr(decision.get("normal_discretionary_spend", 0))
+    cash_after = decision.get("cash_after_purchase", 0)
+    mts = decision.get("months_to_save")
+    impacts = decision.get("goal_impacts", [])
+    primary = impacts[0] if impacts else {}
+    goal_txt = ""
+    if primary and primary.get("delay_months") is not None:
+        d = primary["delay_months"]
+        if d > 0:
+            goal_txt = (f" It would delay your '{primary['goal']}' goal by "
+                        f"about {d} month(s).")
+        elif d < 0:
+            goal_txt = (f" It would accelerate your '{primary['goal']}' goal "
+                        f"by about {-d} month(s).")
+        else:
+            goal_txt = f" Your '{primary['goal']}' goal timeline is unchanged."
+    base_txt = (f"Based on {period}, your monthly free cash flow is {free} "
+                f"(income {income}, committed {committed}, discretionary "
+                f"spending {disc}).")
+    if verdict == "AFFORDABLE":
+        return (base_txt + f" A {amt} purchase leaves {_signed(cash_after)} "
+                f"free cash that month — you can afford it." + goal_txt)
+    if verdict == "TIGHT":
+        return (base_txt + f" A {amt} purchase would leave {_signed(cash_after)} "
+                f"free cash that month — it is affordable only with discipline."
+                + (f" Saving for about {mts} month(s) or trimming discretionary "
+                   f"spending first is the safer route." if mts else "")
+                + goal_txt)
+    if verdict == "NOT_YET":
+        return (base_txt + f" A {amt} purchase would need about {mts} month(s) "
+                f"of free cash flow ({free}/month) — not yet." + goal_txt)
+    return "Not enough transaction data to assess this purchase yet."
 
 
 def _afford_answer(summary: dict, budget: dict) -> str:

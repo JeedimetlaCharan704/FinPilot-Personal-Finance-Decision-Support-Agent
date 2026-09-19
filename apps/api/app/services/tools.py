@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from app import db
-from app.services import analytics, anomalies, goals, simulations
+from app.services import affordability, analytics, anomalies, goals, simulations
 
 
 class ToolValidationError(ValueError):
@@ -92,6 +92,13 @@ def _get_upcoming_obligations(user_id: str, args: dict) -> dict:
     return analytics.upcoming_obligations(user_id, days=int(args.get("days") or 30))
 
 
+def _evaluate_affordability(user_id: str, args: dict) -> dict:
+    if args.get("amount") is None:
+        raise ToolValidationError("evaluate_affordability requires 'amount'")
+    amount = affordability.validate_purchase_amount(args["amount"])
+    return affordability.evaluate_affordability(user_id, amount)
+
+
 TOOLS: dict[str, dict] = {
     "get_transactions": {
         "description": "Retrieve transactions (optionally date-bounded).",
@@ -152,6 +159,14 @@ TOOLS: dict[str, dict] = {
         "description": "Recurring payments due within N days.",
         "fn": _get_upcoming_obligations,
         "validate": lambda a: _require(a),
+    },
+    "evaluate_affordability": {
+        "description": ("Decision for a one-time purchase: verdict "
+                        "(AFFORDABLE/TIGHT/NOT_YET), free cash flow, cash "
+                        "after purchase, comparison scenarios and goal "
+                        "impacts. Requires a positive 'amount' in INR."),
+        "fn": _evaluate_affordability,
+        "validate": lambda a: _require(a, "amount"),
     },
 }
 
