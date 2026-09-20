@@ -8,10 +8,10 @@ Monorepo for the Agentic AI Hackathon build.
 
 ```
 ├── apps/
-│   ├── api/      FastAPI backend (health, DB layer, demo-data generation)
+│   ├── api/      FastAPI backend (agent, decisions, analytics, guardian, simulations)
 │   └── web/      Next.js 15 + TypeScript + Tailwind + shadcn/ui frontend
 ├── data/
-│   └── demo_data.csv   Synthetic 6-month INR demo transactions
+│   └── demo_data.csv   Synthetic 6-month INR demo transactions (60 rows, deterministic)
 ├── supabase/
 │   └── migrations/     Schema + deterministic seed (idempotent)
 ├── docs/
@@ -20,34 +20,42 @@ Monorepo for the Agentic AI Hackathon build.
 └── THIRD_PARTY_NOTICES.md
 ```
 
-## Status
+## What FinPilot does
 
-- **Phase 2** (base scaffold): complete — backend `GET /api/health`, frontend dashboard shell.
-- **Phase 3** (data foundation): complete — schema, migrations, seed, demo dataset, DB health endpoint, tests.
-- **Phase 4** (agent + decision simulator): **NOT started** — no LangGraph, no financial calculations, no Grok wiring.
+FinPilot is a conversational finance agent that answers: **"Can I afford this?"**
 
-## Backend (FastAPI)
+- **Affordability engine** — Given a question like "Can I afford a ₹65,000 laptop next month?", FinPilot computes projected income, committed outflows, discretionary spending, free cash, and a verdict (YES / NOT_YET / NO) with a months-to-save timeline.
+- **Subscription Guardian** — Monitors recurring payments and detects price increases (e.g. Netflix ₹499 → ₹649). Produces explainable analysis with percentage, annual impact, and a human-in-the-loop action draft.
+- **Decision simulator** — What-if scenario engine with goal impact projections.
+- **Agent trace** — Every decision shows the full reasoning chain: intent → tools → calculations → verdict.
+
+## Quick start
+
+### Backend (FastAPI)
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate            # or source .venv/bin/activate on *nix
-pip install -r apps/api/requirements.txt
-
-# run
 cd apps/api
-python -m uvicorn app.main:app --reload --port 8000
+python -m venv .venv && .venv\Scripts\activate
+pip install -r requirements.txt
 
-# tests (no Supabase needed; integration tests auto-skip)
-cd apps/api
-python -m pytest
+# run (free LLM provider by default)
+set LLM_PROVIDER=free
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8100
+
+# tests (197 total, no external services needed)
+python -m pytest tests/ -q
 ```
 
-Endpoints
+### Frontend (Next.js)
 
-| Route               | Purpose |
-|---------------------|---------|
-| `GET /api/health`   | `{"status":"ok","service":"finpilot-api"}` |
-| `GET /api/db/health`| DB connectivity (503 + non-secret message when not configured) |
+```bash
+cd apps/web
+npm install
+npm run dev        # http://localhost:3000
+npm run build      # production build
+```
+
+Frontend connects to `NEXT_PUBLIC_API_BASE_URL` (default `http://127.0.0.1:8100`).
 
 ### Generate demo data
 
@@ -57,16 +65,25 @@ set PYTHONPATH=%CD%
 python scripts/generate_demo_data.py   # deterministic; rewrites data/demo_data.csv
 ```
 
-## Frontend (Next.js)
+## API endpoints
 
-```bash
-cd apps/web
-npm install
-npm run dev        # http://localhost:3000
-npm run build      # production build
-```
-
-Health badge reads `NEXT_PUBLIC_API_BASE_URL` (default `http://127.0.0.1:8000`).
+| Route | Purpose |
+|-------|---------|
+| `GET /api/health` | Service health check |
+| `GET /api/db/health` | DB connectivity (503 when not configured) |
+| `POST /api/agent/analyze` | Main agent — intent detection, tool routing, affordability decisions |
+| `GET /api/analytics/monthly` | Monthly income/spend/savings |
+| `GET /api/analytics/categories` | Category breakdown |
+| `GET /api/analytics/recurring` | Recurring/subscription detection |
+| `GET /api/analytics/goals` | Financial goals progress |
+| `GET /api/analytics/anomalies` | Spending anomalies |
+| `POST /api/simulations` | What-if scenario simulation |
+| `GET /api/guardian/detect` | Detect subscription price increases |
+| `POST /api/guardian/draft` | Create action draft for a price increase |
+| `GET /api/guardian/summary` | Guardian summary stats |
+| `GET /api/actions` | List all action drafts |
+| `POST /api/actions/{id}/approve` | Approve an action draft |
+| `POST /api/actions/{id}/reject` | Reject an action draft |
 
 ## Database (Supabase)
 
@@ -83,6 +100,7 @@ See `docs/database.md` for the schema map and RLS strategy.
 - `SUPABASE_SERVICE_ROLE_KEY` and `XAI_API_KEY` are **server-only**.
 - Never place service-role keys in `NEXT_PUBLIC_*`.
 - Demo data is fully synthetic; contains no real personal financial data.
+- All 197 backend tests pass. Frontend builds clean (0 errors).
 
 ## Phases
 
@@ -91,4 +109,8 @@ See `docs/database.md` for the schema map and RLS strategy.
 | 1 | Architecture audit | ✅ |
 | 2 | Project base scaffold | ✅ |
 | 3 | Database + data foundation | ✅ |
-| 4 | Decision simulator + agent | ⏳ NOT started |
+| 4 | Agent + decision simulator | ✅ |
+| 5 | Subscription guardian | ✅ |
+| 6 | Hero "Can I afford this?" + Phase 6 determinism | ✅ |
+| 7 | Subscription guardian (price-increase detection, action drafts, approve/reject) | ✅ |
+| 8 | Demo readiness, UX polish & reliability audit | ✅ |

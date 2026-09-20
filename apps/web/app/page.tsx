@@ -119,7 +119,11 @@ export default function Home() {
       setMessages((m) => [...m, { role: "agent", text: ans.answer, agent: ans }]);
       load(); loadRuns();
     } catch (e) {
-      setMessages((m) => [...m, { role: "agent", text: "I could not reach the decision engine.", error: String(e) }]);
+      const msg = String(e);
+      const friendly = msg.includes("Failed to fetch") || msg.includes("NetworkError")
+        ? "Could not reach the FinPilot decision engine. Please check your connection."
+        : `Sorry, something went wrong while processing your question. ${msg.includes("Error") ? "" : msg}`;
+      setMessages((m) => [...m, { role: "agent", text: friendly, error: msg }]);
     } finally {
       setThinking(false);
     }
@@ -190,7 +194,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight">FinPilot</h1>
-              <p className="text-xs text-zinc-500">Your Financial Intelligence</p>
+              <p className="text-xs text-zinc-500">Personal Finance Decision Support Agent</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -202,6 +206,15 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* API-down banner */}
+      {apiUp === false && (
+        <div className="mx-auto max-w-7xl px-5 pt-3">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-300">
+            <strong>API unavailable.</strong> FinPilot cannot reach the decision engine right now. Please check that the backend is running on {API_BASE}.
+          </div>
+        </div>
+      )}
 
       {/* ============ PHASE 6 HERO: "Can I afford this?" ============ */}
       <section className="mx-auto max-w-7xl px-5 pt-6">
@@ -308,7 +321,7 @@ export default function Home() {
                 {thinking && (
                   <div className="flex items-center gap-2 text-xs text-zinc-400">
                     <Loader2 className="size-3.5 animate-spin text-emerald-400" />
-                    <span>Detecting intent · calling tools · reasoning over data…</span>
+                    <span>Analyzing your financial data…</span>
                   </div>
                 )}
               </div>
@@ -576,7 +589,7 @@ export default function Home() {
       </div>
 
       <footer className="mx-auto max-w-7xl px-5 pb-8 text-center text-[11px] text-zinc-600">
-        FinPilot · decision-support only · informational analysis, never financial advice · API {API_BASE}
+        FinPilot · decision-support only · informational analysis, never financial advice
       </footer>
     </main>
   );
@@ -774,9 +787,9 @@ function RunRow({ run, expanded, onToggle }: {
         </div>
       </button>
       {expanded && (
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-zinc-700/60 px-3 py-2 text-[10px] leading-relaxed text-zinc-400">
-          {answer}
-        </pre>
+        <div className="border-t border-zinc-700/60 px-3 py-2.5">
+          <p className="text-xs leading-relaxed text-zinc-300">{answer}</p>
+        </div>
       )}
     </div>
   );
