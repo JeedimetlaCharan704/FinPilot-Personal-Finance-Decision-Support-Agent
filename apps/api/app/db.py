@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import date, datetime, timezone, timedelta
 from typing import Any
 from uuid import uuid4
@@ -35,21 +36,28 @@ def create_supabase_client():
     return create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 
-_client = None
+_client_local = threading.local()
 
 
 def get_client():
-    """Lazily build and cache the Supabase client (server-side service role)."""
-    global _client
-    if _client is None:
-        _client = create_supabase_client()
-    return _client
+    """Return a per-thread Supabase client (avoids httpx thread-safety issues).
+
+    Each FastAPI worker thread gets its own ``httpx.Client`` → its own
+    ``httpcore.ConnectionPool`` → its own TCP connection to Supabase.
+    This eliminates the shared-state concurrency bug that caused intermittent
+    ``httpx.ReadError: [Errno 11] Resource temporarily unavailable`` under
+    concurrent requests.
+    """
+    client = getattr(_client_local, "client", None)
+    if client is None:
+        client = create_supabase_client()
+        _client_local.client = client
+    return client
 
 
 def reset_client() -> None:
     """Forget the cached client AND re-read settings (used by tests)."""
-    global _client
-    _client = None
+    _client_local.client = None
     get_settings.cache_clear()
 
 
