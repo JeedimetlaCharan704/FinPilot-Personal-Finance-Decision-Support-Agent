@@ -1,25 +1,37 @@
-"use client"
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, BadgeCheck,
-  BrainCircuit, Bot, CheckCircle2, ChevronDown, CircleDollarSign,
-  Clock, FlaskConical, Gauge, Info, Landmark, ListChecks, Loader2,
-  PieChart, Scale, Send, Shield, Sparkles, Target, TrendingUp, Wallet,
-  XCircle, Zap,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Loader2, Send, Scale, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  API_BASE, approveAction, askAgent, createGuardianDraft, fetchActions, fetchBudget, fetchGoals,
-  fetchGuardian, fetchGuardianSummary, fetchMonthly, fetchRecurring, fetchRuns, fetchUpcoming,
-  inr, pct, rejectAction, runSimulation,
-  type ActionDraft, type ActivityStep, type AgentAnswer, type AgentRun,
-  type BudgetStatus, type DecisionGoalImpact, type DecisionScenario,
-  type Goal, type GuardianDetectResponse, type GuardianSummaryResponse,
-  type MonthlyAnalytics, type RecurringAnalysis, type SimulationResult,
+  approveAction, askAgent, createGuardianDraft, fetchActions, fetchBudget,
+  fetchGoals, fetchGuardian, fetchGuardianSummary, fetchMonthly, fetchRecurring,
+  fetchRuns, rejectAction,
+  type ActionDraft, type AgentAnswer, type AgentRun,
+  type BudgetStatus, type Goal, type GuardianDetectResponse,
+  type GuardianSummaryResponse, type MonthlyAnalytics, type RecurringAnalysis,
 } from "@/lib/api";
+
+/* ---- Components ---- */
+import { FpHeader } from "@/components/fp-header";
+import { DegradedStateBanner } from "@/components/fp-degraded-banner";
+import { FpHero } from "@/components/fp-hero";
+import { FpLoadingSequence } from "@/components/fp-loading-sequence";
+import { DecisionVerdictCard } from "@/components/fp-decision-verdict";
+import { AgentMessageInline } from "@/components/fp-agent-message-inline";
+import { SubscriptionGuardian } from "@/components/fp-subscription-guardian";
+import { ActionDrafts } from "@/components/fp-action-drafts";
+import { AgentActivity } from "@/components/fp-agent-activity";
+import { WhatIfLab } from "@/components/fp-what-if-lab";
+import { SecondaryRail } from "@/components/fp-secondary-rail";
+
+/* ---- Chat message type ---- */
+interface Msg {
+  role: "user" | "agent";
+  text: string;
+  agent?: AgentAnswer;
+  error?: string;
+}
 
 const QUESTION_CHIPS = [
   "Where did I spend the most this month?",
@@ -30,28 +42,8 @@ const QUESTION_CHIPS = [
   "What happens if my rent increases by ₹2,000?",
 ];
 
-const HERO_CHIPS = [
-  "Can I afford a ₹65,000 laptop next month?",
-  "Can I buy a 50000 phone next month?",
-  "Can I spend ₹20k on a trip next month?",
-  "Can I afford a ₹30,000 monitor?",
-];
-
-const SIM_CARDS = [
-  { type: "purchase", label: "Laptop Purchase" },
-  { type: "rent_increase", label: "Rent Increase" },
-  { type: "extra_savings", label: "Extra Savings" },
-  { type: "cancel_subscription", label: "Cancel Netflix" },
-  { type: "monthly_spend", label: "Custom Scenario" },
-];
-interface Msg {
-  role: "user" | "agent";
-  text: string;
-  agent?: AgentAnswer;
-  error?: string;
-}
-
 export default function Home() {
+  /* ---- Data state ---- */
   const [monthly, setMonthly] = useState<MonthlyAnalytics | null>(null);
   const [recurring, setRecurring] = useState<RecurringAnalysis | null>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -59,29 +51,16 @@ export default function Home() {
   const [actions, setActions] = useState<ActionDraft[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [apiUp, setApiUp] = useState<boolean | null>(null);
+  const [guardian, setGuardian] = useState<GuardianDetectResponse | null>(null);
+  const [guardianSummary, setGuardianSummary] = useState<GuardianSummaryResponse | null>(null);
 
+  /* ---- UI state ---- */
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
-
-  // Phase 6 hero: dedicated natural-language purchase input.
-  const [heroInput, setHeroInput] = useState("");
-
-  const [simType, setSimType] = useState("purchase");
-  const [simName, setSimName] = useState("Laptop");
-  const [simAmount, setSimAmount] = useState(60000);
-  const [simDuration, setSimDuration] = useState(12);
-  const [simFreq, setSimFreq] = useState<"one_time" | "monthly">("one_time");
-  const [simResult, setSimResult] = useState<SimulationResult | null>(null);
-  const [simBusy, setSimBusy] = useState(false);
-
-  // Subscription Guardian (Phase 7)
-  const [guardian, setGuardian] = useState<GuardianDetectResponse | null>(null);
-  const [guardianSummary, setGuardianSummary] = useState<GuardianSummaryResponse | null>(null);
   const [draftMerchant, setDraftMerchant] = useState<string | null>(null);
 
-  const [expandedRun, setExpandedRun] = useState<string | null>(null);
-
+  /* ---- Data loading ---- */
   const load = useCallback(async () => {
     try {
       const [m, rc, g, b, a, gd, gs] = await Promise.all([
@@ -108,6 +87,7 @@ export default function Home() {
     return () => clearInterval(t);
   }, [load, loadRuns]);
 
+  /* ---- Agent interaction ---- */
   const ask = useCallback(async (question: string) => {
     const q = question.trim();
     if (!q || thinking) return;
@@ -122,12 +102,14 @@ export default function Home() {
       const msg = String(e);
       const friendly = msg.includes("Failed to fetch") || msg.includes("NetworkError")
         ? "Could not reach the FinPilot decision engine. Please check your connection."
-        : `Sorry, something went wrong while processing your question. ${msg.includes("Error") ? "" : msg}`;
+        : `Sorry, something went wrong. ${msg.includes("Error") ? "" : msg}`;
       setMessages((m) => [...m, { role: "agent", text: friendly, error: msg }]);
     } finally {
       setThinking(false);
     }
   }, [thinking, load, loadRuns]);
+
+  /* ---- Action handlers ---- */
   const onApprove = useCallback(async (id: string) => {
     await approveAction(id);
     setActions((await fetchActions()).actions);
@@ -148,35 +130,7 @@ export default function Home() {
     }
   }, []);
 
-  const runSim = useCallback(async () => {
-    setSimBusy(true);
-    try {
-      const res = await runSimulation({
-        scenario_type: simType,
-        name: simName,
-        amount: Number(simAmount),
-        frequency: simFreq,
-        duration_months: simType === "purchase" || simType === "cancel_subscription" ? 1 : Number(simDuration),
-        reference_id: simType === "cancel_subscription" ? (recurring?.payments.find(p => p.merchant === "Netflix")?.id ?? "") : "",
-      });
-      setSimResult(res);
-    } catch (e) {
-      setSimResult(null);
-      alert(`Simulation failed: ${e}`);
-    } finally {
-      setSimBusy(false);
-    }
-  }, [simType, simName, simAmount, simFreq, simDuration, recurring]);
-
-  const pickSim = (t: string, label: string, amt: number, freq: "one_time" | "monthly") => {
-    setSimType(t); setSimName(label); setSimAmount(amt); setSimFreq(freq);
-  };
-
-  const net = monthly?.net ?? 0;
-  const savingsRate = monthly?.savings_rate ?? 0;
-
-  // The most recent agent reply that carries a structured affordability
-  // decision, used to render the hero decision card.
+  /* ---- Derived state ---- */
   const lastDecision = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].agent?.decision) return messages[i].agent;
@@ -184,99 +138,27 @@ export default function Home() {
     return null;
   }, [messages]);
 
+  const nonDecisionMessages = useMemo(
+    () => messages.filter((m) => m.role === "user" || !m.agent?.decision),
+    [messages],
+  );
+
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="sticky top-0 z-20 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-3">
-            <div className="grid size-9 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30">
-              <BrainCircuit className="size-5" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight">FinPilot</h1>
-              <p className="text-xs text-zinc-500">Personal Finance Decision Support Agent</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={apiUp === null ? "outline" : apiUp ? "default" : "destructive"}>
-              <span className={`mr-1 inline-block size-1.5 rounded-full ${apiUp === null ? "bg-zinc-500" : apiUp ? "bg-emerald-400" : "bg-red-400"}`} />
-              {apiUp === null ? "connecting" : apiUp ? "API live" : "API down"}
-            </Badge>
-            <Badge variant="secondary">decision-support</Badge>
-          </div>
-        </div>
-      </header>
+    <main className="min-h-screen" style={{ background: "var(--color-fp-bg)", color: "var(--color-fp-text)" }}>
+      {/* Header */}
+      <FpHeader apiUp={apiUp} />
 
       {/* API-down banner */}
-      {apiUp === false && (
-        <div className="mx-auto max-w-7xl px-5 pt-3">
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-300">
-            <strong>API unavailable.</strong> FinPilot cannot reach the decision engine right now. Please check that the backend is running on {API_BASE}.
-          </div>
-        </div>
-      )}
+      <DegradedStateBanner apiUp={apiUp === true} onRetry={load} />
 
-      {/* ============ PHASE 6 HERO: "Can I afford this?" ============ */}
-      <section className="mx-auto max-w-7xl px-5 pt-6">
-        <div className="rounded-2xl border border-emerald-500/25 bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950 p-5 sm:p-7">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">
-              <Gauge className="mr-1 size-3" /> decision agent
-            </Badge>
-            <Badge variant="outline" className="text-zinc-400">
-              deterministic verdicts · AI explanations
-            </Badge>
-          </div>
-          <h2 className="mt-3 text-3xl font-black tracking-tight text-zinc-50 sm:text-4xl">
-            Can I afford <span className="text-emerald-400">this?</span>
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">
-            Your bank app tells you what you spent.{" "}
-            <span className="text-zinc-200">FinPilot tells you what you can do.</span>{" "}
-            Ask about a purchase, trip, subscription or any spending decision —
-            you get a verdict, comparison scenarios and goal impact, grounded in
-            your own transactions.
-          </p>
-          <form
-            className="mt-4 flex flex-col gap-2 sm:flex-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const q = heroInput.trim();
-              if (!q || thinking) return;
-              setHeroInput("");
-              ask(q);
-            }}
-          >
-            <input
-              value={heroInput}
-              onChange={(e) => setHeroInput(e.target.value)}
-              placeholder="Can I afford a ₹65,000 laptop next month?"
-              aria-label="Ask FinPilot about a purchase you are considering"
-              className="h-11 flex-1 rounded-xl border border-zinc-700 bg-zinc-950/80 px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-500/60 focus:outline-none"
-            />
-            <Button type="submit" disabled={thinking || !heroInput.trim()} className="h-11 sm:w-32">
-              {thinking ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Scale className="mr-1 size-4" />}
-              Ask
-            </Button>
-          </form>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {HERO_CHIPS.map((c) => (
-              <button
-                key={c}
-                onClick={() => ask(c)}
-                className="rounded-full border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-emerald-500/50 hover:text-emerald-300"
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Hero: "Can I afford this?" */}
+      <FpHero onAsk={ask} thinking={thinking} />
 
-      {lastDecision && <DecisionCard agent={lastDecision} />}
+      {/* Decision Result (dominant element) */}
+      {lastDecision && <DecisionVerdictCard agent={lastDecision} />}
 
-      {/* ============ PHASE 7: Subscription Guardian ============ */}
-      <GuardianSection
+      {/* Subscription Guardian */}
+      <SubscriptionGuardian
         guardian={guardian}
         summary={guardianSummary}
         actions={actions}
@@ -286,956 +168,178 @@ export default function Home() {
         draftMerchant={draftMerchant}
       />
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      {/* Loading sequence */}
+      {thinking && !lastDecision && (
+        <div className="mx-auto max-w-7xl px-5 pt-4">
+          <FpLoadingSequence active={thinking} />
+        </div>
+      )}
+
+      {/* ================================================================
+          MAIN CONTENT: Primary column + Secondary rail (desktop)
+          Mobile: full vertical stack
+          ================================================================ */}
+      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+
+        {/* Primary column */}
         <div className="space-y-5">
-          {/* ---- Copilot ---- */}
-          <Card className="border-zinc-800 bg-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bot className="size-4 text-emerald-400" /> AI Copilot
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-3">
-                {messages.length === 0 && (
-                  <p className="rounded-lg border border-dashed border-zinc-700 p-3 text-xs text-zinc-400">
-                    Ask FinPilot anything about your money. Every answer is grounded in your
-                    transactions — never invented. Evidence and calculations are shown with each reply.
-                    {" "}An AI model enhances explanations when configured; otherwise you get the
-                    same answers from the built-in deterministic engine.
-                  </p>
-                )}
-                {messages.map((m, i) => (
-                  <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                      m.role === "user"
-                        ? "bg-emerald-500/15 text-emerald-50 ring-1 ring-emerald-500/30"
-                        : "bg-zinc-800/80 text-zinc-100 ring-1 ring-zinc-700"
-                    }`}>
-                      <p>{m.text}</p>
-                      {m.error && <p className="mt-1 text-xs text-red-400">{m.error}</p>}
-                      {m.agent && <AgentDetailBlock agent={m.agent} />}
-                    </div>
-                  </div>
-                ))}
-                {thinking && (
-                  <div className="flex items-center gap-2 text-xs text-zinc-400">
-                    <Loader2 className="size-3.5 animate-spin text-emerald-400" />
-                    <span>Analyzing your financial data…</span>
-                  </div>
-                )}
-              </div>
+          {/* Inline copilot */}
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "var(--color-fp-surface)", border: "1px solid var(--color-fp-border)" }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Bot className="size-3.5" style={{ color: "var(--color-fp-green)" }} />
+              <p className="fp-label-card" style={{ color: "var(--color-fp-text-muted)" }}>
+                CONTINUE THE CONVERSATION
+              </p>
+            </div>
 
-              <div className="flex flex-wrap gap-1.5">
-                {QUESTION_CHIPS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => ask(c)}
-                    className="rounded-full border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-emerald-500/50 hover:text-emerald-300"
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-
-              <form
-                className="flex items-center gap-2"
-                onSubmit={(e) => { e.preventDefault(); ask(input); }}
-              >
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask FinPilot anything about your money…"
-                  className="h-10 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-500/60 focus:outline-none"
-                />
-                <Button type="submit" disabled={thinking || !input.trim()} className="h-10">
-                  {thinking ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Send className="mr-1 size-4" />}
-                  Ask
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-          {/* ---- What-If Lab ---- */}
-          <Card className="border-zinc-800 bg-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FlaskConical className="size-4 text-violet-400" /> What-If Lab
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {SIM_CARDS.map((s) => (
-                  <button
-                    key={s.type}
-                    onClick={() => pickSim(s.type, s.label, s.type === "purchase" ? 60000 : s.type === "rent_increase" ? 2000 : s.type === "extra_savings" ? 10000 : s.type === "cancel_subscription" ? 649 : 5000, s.type === "purchase" ? "one_time" : "monthly")}
-                    className={`rounded-xl border p-2.5 text-left text-xs transition ${
-                      simType === s.type
-                        ? "border-violet-500/60 bg-violet-500/10 text-violet-200"
-                        : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-500"
-                    }`}
-                  >
-                    <div className="mb-1 text-violet-300"><TrendingUp className="size-4" /></div>
-                    <div className="font-medium">{s.label}</div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="block text-xs text-zinc-400">
-                  Amount (₹)
-                  <input
-                    type="number"
-                    value={simAmount}
-                    onChange={(e) => setSimAmount(Number(e.target.value))}
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100 focus:border-violet-500/60 focus:outline-none"
-                  />
-                </label>
-                <label className="block text-xs text-zinc-400">
-                  Frequency
-                  <select
-                    value={simFreq}
-                    onChange={(e) => setSimFreq(e.target.value as "one_time" | "monthly")}
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100 focus:border-violet-500/60 focus:outline-none"
-                  >
-                    <option value="one_time">One-time</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </label>
-                <label className="block text-xs text-zinc-400">
-                  Duration (months)
-                  <input
-                    type="number"
-                    value={simDuration}
-                    min={1}
-                    onChange={(e) => setSimDuration(Number(e.target.value))}
-                    className="mt-1 h-9 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100 focus:border-violet-500/60 focus:outline-none"
-                  />
-                </label>
-              </div>
-
-              <Button onClick={runSim} disabled={simBusy} className="w-full bg-violet-600 hover:bg-violet-500">
-                {simBusy ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Sparkles className="mr-1 size-4" />}
-                Run Simulation
-              </Button>
-
-              {simResult && <SimulationBlock sim={simResult} />}
-            </CardContent>
-          </Card>
-
-          {/* ---- Action drafts ---- */}
-          <Card className="border-zinc-800 bg-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-amber-400" /> Action Drafts
-                <Badge variant="outline" className="ml-1">{actions.length}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {actions.length === 0 && (
-                <p className="text-xs text-zinc-500">No draft actions yet. Ask the copilot about your goals or spending to generate suggestions.</p>
+            <div className="space-y-2.5">
+              {nonDecisionMessages.length === 0 && !thinking && (
+                <p className="rounded-lg p-3 text-xs" style={{
+                  background: "var(--color-fp-surface-raised)",
+                  border: "1px solid var(--color-fp-border)",
+                  color: "var(--color-fp-text-dim)",
+                }}>
+                  Ask FinPilot anything about your money. Every answer is grounded in your
+                  transactions — never invented.
+                </p>
               )}
-              {actions.map((a) => (
-                <div key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-700/70 bg-zinc-800/40 p-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-zinc-100">{a.title}</p>
-                    {a.description && <p className="mt-0.5 truncate text-xs text-zinc-400">{a.description}</p>}
-                    <Badge variant={a.status === "draft" ? "outline" : a.status === "approved" ? "default" : "secondary"} className="mt-1.5">
-                      {a.status}
-                    </Badge>
+              {nonDecisionMessages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className="max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
+                    style={{
+                      background: m.role === "user" ? "var(--color-fp-green-dim)" : "var(--color-fp-surface-raised)",
+                      border: `1px solid ${m.role === "user" ? "var(--color-fp-green-ring)" : "var(--color-fp-border)"}`,
+                      color: "var(--color-fp-text)",
+                    }}
+                  >
+                    <p>{m.text}</p>
+                    {m.error && <p className="mt-1 text-xs" style={{ color: "var(--color-fp-rose)" }}>{m.error}</p>}
+                    {m.agent && <AgentMessageInline agent={m.agent} />}
                   </div>
-                  {a.status === "draft" && (
-                    <div className="flex shrink-0 gap-1.5">
-                      <Button size="sm" variant="secondary" onClick={() => onApprove(a.id)}>
-                        <CheckCircle2 className="mr-1 size-3.5 text-emerald-400" /> Approve
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => onReject(a.id)}>
-                        <XCircle className="mr-1 size-3.5 text-red-400" /> Reject
-                      </Button>
-                    </div>
-                  )}
                 </div>
               ))}
-            </CardContent>
-          </Card>
-          {/* ---- Agent Activity ---- */}
-          <Card className="border-zinc-800 bg-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="size-4 text-sky-400" /> Agent Activity
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {runs.length === 0 && <p className="text-xs text-zinc-500">No agent runs yet.</p>}
-              {runs.map((r) => (
-                <RunRow key={r.id} run={r} expanded={expandedRun === r.id}
-                  onToggle={() => setExpandedRun(expandedRun === r.id ? null : r.id)} />
-              ))}
-            </CardContent>
-          </Card>
-        </div>
+              {thinking && (
+                <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-fp-text-muted)" }}>
+                  <Loader2 className="size-3.5 animate-spin" style={{ color: "var(--color-fp-green)" }} />
+                  <span>Analyzing your financial data…</span>
+                </div>
+              )}
+            </div>
 
-        {/* ============ RIGHT COLUMN ============ */}
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3">
-            <KpiCard icon={<Wallet className="size-4 text-emerald-400" />} label="Net Cash Flow" value={inr(net)}
-              sub={`${pct(savingsRate)} savings rate`} up={net >= 0} />
-            <KpiCard icon={<CircleDollarSign className="size-4 text-rose-400" />} label="Monthly Spending" value={inr(monthly?.expenses ?? 0)}
-              sub={monthly ? `${monthly.transactions_analyzed} transactions` : "…"} up={false} />
-            <KpiCard icon={<TrendingUp className="size-4 text-sky-400" />} label="Savings Rate" value={pct(savingsRate)}
-              sub={monthly?.period_label ?? "…"} up={savingsRate > 20} />
-            <KpiCard icon={<Landmark className="size-4 text-amber-400" />} label="Committed" value={inr(recurring?.monthly_committed ?? 0)}
-              sub={`${inr(recurring?.annualized_recurring_cost ?? 0)}/yr`} up={false} />
+            {/* Quick question chips */}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {QUESTION_CHIPS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => ask(c)}
+                  disabled={thinking}
+                  className="rounded-full px-2.5 py-1 text-[11px] transition-all hover:scale-[1.02]"
+                  style={{
+                    background: "var(--color-fp-surface-raised)",
+                    border: "1px solid var(--color-fp-border)",
+                    color: "var(--color-fp-text-muted)",
+                  }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            {/* Ask input */}
+            <form
+              className="mt-3 flex items-center gap-2"
+              onSubmit={(e) => { e.preventDefault(); ask(input); }}
+            >
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask FinPilot anything about your money…"
+                className="h-10 flex-1 rounded-xl px-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-fp-green)]/40"
+                style={{
+                  background: "var(--color-fp-bg)",
+                  border: "1px solid var(--color-fp-border)",
+                }}
+              />
+              <Button
+                type="submit"
+                disabled={thinking || !input.trim()}
+                className="h-10 gap-1.5"
+                style={{
+                  background: thinking ? "var(--color-fp-surface-raised)" : "var(--color-fp-green)",
+                  color: thinking ? "var(--color-fp-text-muted)" : "var(--color-fp-bg)",
+                  border: "1px solid var(--color-fp-border)",
+                }}
+              >
+                {thinking ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                Ask
+              </Button>
+            </form>
           </div>
 
-          <Card className="border-emerald-500/25 bg-gradient-to-br from-emerald-500/10 to-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-emerald-300">
-                <Sparkles className="size-4" /> AI Insight
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {monthly?.insights?.length ? (
-                <ul className="space-y-1.5 text-sm text-zinc-200">
-                  {monthly.insights.slice(0, 3).map((ins, i) => (
-                    <li key={i} className="flex gap-2"><ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />{ins}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-zinc-400">Loading insight…</p>
-              )}
-              {budget && (
-                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-zinc-700/60 pt-3 text-center">
-                  <div>
-                    <p className="text-[11px] text-zinc-500">Committed</p>
-                    <p className="text-sm font-semibold text-amber-300">{inr(budget.committed)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-zinc-500">Spent</p>
-                    <p className="text-sm font-semibold text-rose-300">{inr(budget.spent)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-zinc-500">Discretionary</p>
-                    <p className="text-sm font-semibold text-emerald-300">{inr(budget.discretionary)}</p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* What-If Lab */}
+          <WhatIfLab recurring={recurring} />
 
-          <Card className="border-zinc-800 bg-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="size-4 text-emerald-400" /> Goals
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {goals.map((g) => (
-                <div key={g.id}>
-                  <div className="mb-1 flex items-baseline justify-between text-sm">
-                    <span className="font-medium text-zinc-200">{g.name}</span>
-                    <span className="text-xs text-zinc-400">{inr(g.current_amount)} / {inr(g.target_amount)} · {pct(g.progress_pct)}</span>
-                  </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-zinc-800">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
-                      style={{ width: `${Math.min(100, g.progress_pct)}%` }}
-                    />
-                  </div>
-                  {g.required_monthly !== null && (
-                    <p className="mt-1 text-[11px] text-zinc-500">
-                      {inr(g.required_monthly)}/mo required{g.target_date ? ` · target ${g.target_date}` : ""}
-                    </p>
-                  )}
-                </div>
-              ))}
-              {goals.length === 0 && <p className="text-xs text-zinc-500">No goals set up.</p>}
-            </CardContent>
-          </Card>
+          {/* Action Drafts */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <p className="fp-label-card" style={{ color: "var(--color-fp-text-muted)" }}>ACTION DRAFTS</p>
+            </div>
+            <ActionDrafts actions={actions} onApprove={onApprove} onReject={onReject} />
+          </div>
 
-          <Card className="border-zinc-800 bg-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BadgeCheck className="size-4 text-sky-400" /> Upcoming Obligations
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <UpcomingList />
-            </CardContent>
-          </Card>
+          {/* Agent Activity / Decision History */}
+          <AgentActivity runs={runs} />
+        </div>
 
-          <Card className="border-zinc-800 bg-zinc-900/60">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PieChart className="size-4 text-violet-400" /> Spending Mix · {monthly?.period_label ?? ""}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {monthly?.category_breakdown.map((c) => (
-                <div key={c.category} className="flex items-center gap-2 text-sm">
-                  <span className="w-28 shrink-0 truncate text-zinc-300">{c.category}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
-                    <div
-                      className="h-full rounded-full bg-violet-500/70"
-                      style={{ width: `${monthly.expenses > 0 ? (c.amount / monthly.expenses) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <span className="w-20 shrink-0 text-right text-xs text-zinc-400">{inr(c.amount)}</span>
-                  <span className="w-6 shrink-0 text-right text-[10px] text-zinc-600">{c.transaction_count}×</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        {/* Secondary rail — visually lighter, smaller, no competing shadows */}
+        <div className="space-y-4">
+          <SecondaryRail monthly={monthly} recurring={recurring} budget={budget} goals={goals} />
         </div>
       </div>
 
-      <footer className="mx-auto max-w-7xl px-5 pb-8 text-center text-[11px] text-zinc-600">
+      {/* Sticky mobile ask bar */}
+      <div className="fp-sticky-ask lg:hidden">
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => { e.preventDefault(); ask(input); }}
+        >
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask FinPilot…"
+            className="h-10 flex-1 rounded-xl px-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none"
+            style={{
+              background: "var(--color-fp-surface)",
+              border: "1px solid var(--color-fp-border)",
+            }}
+          />
+          <Button
+            type="submit"
+            disabled={thinking || !input.trim()}
+            className="h-10 shrink-0 gap-1.5"
+            style={{
+              background: thinking ? "var(--color-fp-surface-raised)" : "var(--color-fp-green)",
+              color: thinking ? "var(--color-fp-text-muted)" : "var(--color-fp-bg)",
+              border: "1px solid var(--color-fp-border)",
+            }}
+          >
+            {thinking ? <Loader2 className="size-3.5 animate-spin" /> : <Scale className="size-3.5" />}
+            Ask
+          </Button>
+        </form>
+      </div>
+
+      {/* Footer */}
+      <footer
+        className="mx-auto max-w-7xl px-5 pb-8 pt-4 text-center text-[11px]"
+        style={{ color: "var(--color-fp-text-dim)" }}
+      >
         FinPilot · decision-support only · informational analysis, never financial advice
       </footer>
     </main>
-  );
-}
-function KpiCard({ icon, label, value, sub, up }: {
-  icon: React.ReactNode; label: string; value: string; sub: string; up: boolean;
-}) {
-  return (
-    <Card className="border-zinc-800 bg-zinc-900/60">
-      <CardContent className="pt-4">
-        <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">{icon}{label}</div>
-        <p className="mt-1 text-lg font-bold tracking-tight text-zinc-50">{value}</p>
-        <p className={`flex items-center gap-1 text-[11px] ${up ? "text-emerald-400" : "text-zinc-500"}`}>
-          {up ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}{sub}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function UpcomingList() {
-  const [items, setItems] = useState<{ merchant: string; due_date: string; amount: number }[]>([]);
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetchUpcoming();
-        const list = res.upcoming.map((u) => ({
-          merchant: u.merchant, due_date: u.next_payment_date, amount: u.amount,
-        }));
-        setItems(list.slice(0, 4));
-      } catch { /* ignore */ }
-    })();
-  }, []);
-  if (items.length === 0) return <p className="text-xs text-zinc-500">Nothing scheduled ahead.</p>;
-  return (
-    <ul className="space-y-1.5 text-sm">
-      {items.map((i) => (
-        <li key={i.merchant + i.due_date} className="flex items-center justify-between gap-2 rounded-lg bg-zinc-800/50 px-3 py-2">
-          <span className="truncate text-zinc-200">{i.merchant}</span>
-          <span className="shrink-0 text-xs text-zinc-400">{new Date(i.due_date).toLocaleDateString()}</span>
-          <span className="shrink-0 font-medium text-zinc-100">{inr(i.amount)}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function SimulationBlock({ sim }: { sim: SimulationResult }) {
-  const b = sim.baseline, s = sim.scenario;
-  const diff = sim.difference ?? {};
-  const gi = sim.goal_impact ?? {};
-  const delayMonths = gi.delay_months as number | null;
-  const delayTxt = delayMonths === null || delayMonths === undefined
-    ? null
-    : delayMonths > 0
-      ? `delays '${gi.goal}' goal by about ${delayMonths} month(s)`
-      : delayMonths < 0
-        ? `reaches '${gi.goal}' about ${-delayMonths} month(s) sooner`
-        : `'${gi.goal}' timeline unchanged`;
-  return (
-    <div className="space-y-2 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 text-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wide text-violet-300">{s.label}</span>
-        <Badge variant={s.monthly_savings >= 0 ? "default" : "secondary"}>
-          {s.monthly_savings >= 0 ? "feasible" : "caution"}
-        </Badge>
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div>
-          <p className="text-[11px] text-zinc-500">Savings now</p>
-          <p className="font-semibold text-zinc-100">{inr(b.monthly_savings)}</p>
-        </div>
-        <div>
-          <p className="text-[11px] text-zinc-500">Savings after</p>
-          <p className="font-semibold text-emerald-300">{inr(s.monthly_savings)}</p>
-        </div>
-        <div>
-          <p className="text-[11px] text-zinc-500">Cumulative ({diff.duration_months ?? 1} mo)</p>
-          <p className="font-semibold text-amber-300">{inr(diff.total_cumulative ?? 0)}</p>
-        </div>
-      </div>
-      {delayTxt && <p className="text-xs text-amber-300">— {delayTxt}</p>}
-      <p className="text-xs leading-relaxed text-zinc-300">{sim.explanation}</p>
-      {sim.assumptions.length > 0 && (
-        <ul className="space-y-0.5 text-[10px] text-zinc-500">
-          {sim.assumptions.map((a, i) => <li key={i}>— {a}</li>)}
-        </ul>
-      )}
-      <p className="text-[11px] text-zinc-600">deterministic run · decision-support only</p>
-    </div>
-  );
-}
-function AgentDetailBlock({ agent }: { agent: AgentAnswer }) {
-  return (
-    <div className="mt-2 space-y-2 border-t border-zinc-700/60 pt-2 text-xs">
-      <div className="flex flex-wrap gap-1.5">
-        <Badge variant="outline" className="text-[10px]">{agent.intent}</Badge>
-        <Badge variant={agent.mode === "llm" ? "default" : "secondary"} className="text-[10px]">
-          {agent.mode === "llm" ? `AI-assisted · ${agent.model || "llm"}` : "deterministic engine"}
-        </Badge>
-        {agent.decision && (
-          <Badge
-            variant={VERDICT_META[agent.decision.verdict]?.badge ?? "outline"}
-            className="gap-1 text-[10px]"
-          >
-            <span className={`inline-block size-1.5 rounded-full ${VERDICT_META[agent.decision.verdict]?.dot ?? "bg-zinc-400"}`} />
-            {VERDICT_META[agent.decision.verdict]?.label ?? agent.decision.verdict}
-          </Badge>
-        )}
-        {agent.warnings?.map((w, i) => (
-          <Badge key={i} variant="destructive" className="text-[10px]">{w.slice(0, 60)}</Badge>
-        ))}
-        {agent.recommended_actions
-          .filter((r) => r.action_type !== "none")
-          .map((r) => (
-            <Badge key={r.id || r.title} variant="secondary" className="bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30">
-              action: {r.title}
-            </Badge>
-          ))}
-      </div>
-
-      {agent.evidence.length > 0 && (
-        <details className="rounded-lg bg-zinc-900/80 p-2" open>
-          <summary className="cursor-pointer font-medium text-zinc-300">Evidence</summary>
-          <ul className="mt-1.5 space-y-1">
-            {agent.evidence.map((e, i) => (
-              <li key={i} className="flex items-center gap-1.5 text-zinc-400">
-                <CheckCircle2 className="size-3 shrink-0 text-emerald-500" />
-                <span>
-                  <span className="text-zinc-300">{e.label}:</span> {e.value}
-                  {e.detail ? <span className="text-zinc-500"> · {e.detail}</span> : null}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {agent.calculations.length > 0 && (
-        <details className="rounded-lg bg-zinc-900/80 p-2">
-          <summary className="cursor-pointer font-medium text-zinc-300">Calculations</summary>
-          <ul className="mt-1.5 space-y-1">
-            {agent.calculations.map((c, i) => (
-              <li key={i} className="text-zinc-400">
-                <span className="text-zinc-300">{c.formula}:</span> {c.value}
-                {c.detail ? <span className="text-zinc-500"> · {c.detail}</span> : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {agent.activity.length > 0 && (
-        <details className="rounded-lg bg-zinc-900/80 p-2">
-          <summary className="cursor-pointer font-medium text-zinc-300">Activity · {agent.activity.length} steps</summary>
-          <ol className="mt-1.5 space-y-1">
-            {agent.activity.map((a, i) => (
-              <li key={i} className="flex items-center justify-between gap-2 text-zinc-400">
-                <span className="truncate">{i + 1}. {a.tool} → {a.status}</span>
-                {a.latency_ms !== undefined && <span className="shrink-0 text-[10px] text-zinc-600">{a.latency_ms}ms</span>}
-              </li>
-            ))}
-          </ol>
-        </details>
-      )}
-    </div>
-  );
-}
-
-function RunRow({ run, expanded, onToggle }: {
-  run: AgentRun; expanded: boolean; onToggle: () => void;
-}) {
-  let intent = "";
-  let answer = run.final_response ?? "";
-  try {
-    const parsed = JSON.parse(run.final_response ?? "{}");
-    if (parsed && typeof parsed === "object") {
-      intent = parsed.intent ?? "";
-      answer = parsed.answer ?? run.final_response ?? "";
-    }
-  } catch { /* final_response is a plain string */ }
-  const label = intent ? `${intent}` : "agent run";
-  return (
-    <div className="rounded-xl border border-zinc-700/70 bg-zinc-800/40">
-      <button onClick={onToggle} className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left">
-        <div className="min-w-0">
-          <p className={`text-[11px] font-medium ${run.status === "completed" ? "text-emerald-300" : run.status === "failed" ? "text-red-300" : "text-amber-300"}`}>
-            {run.status}
-          </p>
-          <p className="truncate text-sm text-zinc-100">{run.question || label}</p>
-        </div>
-        <div className="shrink-0 text-right">
-          <Badge variant="outline" className="text-[10px]">{label}</Badge>
-          <p className="mt-1 text-[10px] text-zinc-500">{new Date(run.created_at).toLocaleString()}</p>
-        </div>
-      </button>
-      {expanded && (
-        <div className="border-t border-zinc-700/60 px-3 py-2.5">
-          <p className="text-xs leading-relaxed text-zinc-300">{answer}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ================= Phase 6 hero: "Can I afford this?" ================= */
-
-const fmtCash = (v: number | null | undefined): string => {
-  const n = Number(v ?? 0);
-  return n < 0 ? `−${inr(Math.abs(n))}` : inr(n);
-};
-
-const VERDICT_META: Record<string, {
-  badge: "default" | "secondary" | "destructive" | "outline";
-  dot: string; label: string;
-}> = {
-  AFFORDABLE: { badge: "default", dot: "bg-emerald-400", label: "AFFORDABLE" },
-  TIGHT: { badge: "secondary", dot: "bg-amber-400", label: "TIGHT" },
-  NOT_YET: { badge: "destructive", dot: "bg-rose-400", label: "NOT YET" },
-  INSUFFICIENT_DATA: { badge: "outline", dot: "bg-zinc-400", label: "INSUFFICIENT DATA" },
-};
-
-function Metric({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5">
-      <p className="truncate text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className={`mt-1 truncate text-sm font-bold ${tone}`}>{value}</p>
-    </div>
-  );
-}
-
-function DecisionCard({ agent }: { agent: AgentAnswer }) {
-  const d = agent.decision!;
-  const meta = VERDICT_META[d.verdict] ?? VERDICT_META.INSUFFICIENT_DATA;
-  const [showDetails, setShowDetails] = useState(true);
-  return (
-    <section className="mx-auto max-w-7xl px-5 pt-6">
-      <Card className="border-emerald-500/25 bg-zinc-900/70">
-        <CardContent className="space-y-5 pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Gauge className="size-5 text-emerald-400" />
-              <span className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
-                Decision
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={meta.badge} className="gap-1 text-[11px]">
-                <span className={`inline-block size-1.5 rounded-full ${meta.dot}`} />
-                {meta.label}
-              </Badge>
-              <Badge variant={agent.mode === "llm" ? "default" : "secondary"} className="text-[10px]">
-                {agent.mode === "llm" ? `AI-assisted · ${agent.model || "llm"}` : "deterministic engine"}
-              </Badge>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Purchase amount</p>
-              <p className="text-3xl font-black tracking-tight text-zinc-50">{inr(d.purchase_amount)}</p>
-            </div>
-            <p className="max-w-xl text-sm leading-relaxed text-zinc-300">{agent.answer}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            <Metric label="Projected income" value={inr(d.projected_income)} tone="text-zinc-100" />
-            <Metric label="Committed" value={inr(d.committed_outflows)} tone="text-amber-300" />
-            <Metric label="Normal spending" value={inr(d.normal_discretionary_spend)} tone="text-zinc-100" />
-            <Metric label="Free cash" value={inr(d.free_cash)} tone="text-emerald-300" />
-            <Metric label="Cash after purchase" value={fmtCash(d.cash_after_purchase)}
-              tone={d.cash_after_purchase < 0 ? "text-rose-300" : "text-emerald-300"} />
-            <Metric label="Months to save"
-              value={d.months_to_save !== null && d.months_to_save !== undefined ? `${d.months_to_save}` : "—"}
-              tone="text-sky-300" />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ScenarioBlock scenarios={d.scenarios} />
-            <GoalImpactBlock impacts={d.goal_impacts} />
-          </div>
-
-          <TraceFlow activity={agent.activity} />
-
-          <details className="rounded-lg bg-zinc-950/60 p-3" open={showDetails}>
-            <summary
-              onClick={(e) => { e.preventDefault(); setShowDetails(!showDetails); }}
-              className="flex cursor-pointer items-center justify-between text-xs font-medium text-zinc-300"
-            >
-              <span>Evidence & assumptions</span>
-              <ChevronDown className={`size-3.5 text-zinc-500 transition-transform ${showDetails ? "rotate-180" : ""}`} />
-            </summary>
-            {showDetails && (
-              <div className="mt-2 grid gap-3 lg:grid-cols-2">
-                <ul className="space-y-1 text-xs text-zinc-400">
-                  {agent.evidence.map((e, i) => (
-                    <li key={i} className="flex gap-1.5">
-                      <CheckCircle2 className="mt-0.5 size-3 shrink-0 text-emerald-500" />
-                      <span>
-                        <span className="text-zinc-300">{e.label}:</span> {e.value}
-                        {e.detail ? <span className="text-zinc-500"> · {e.detail}</span> : null}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <ul className="space-y-1 text-xs text-zinc-500">
-                  {d.assumptions.map((a, i) => (
-                    <li key={i}>— {a}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </details>
-        </CardContent>
-      </Card>
-    </section>
-  );
-}
-
-function ScenarioBlock({ scenarios }: { scenarios: DecisionScenario[] }) {
-  if (scenarios.length === 0) return null;
-  return (
-    <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">
-        <ListChecks className="size-3.5" /> Compare scenarios
-      </p>
-      <div className="space-y-1.5">
-        {scenarios.map((s, i) => (
-          <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-medium text-zinc-200">{i + 1}. {s.label}</span>
-              <span className="text-xs font-bold text-zinc-100">{inr(s.amount)}</span>
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
-              <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-zinc-300">
-                cash after: {fmtCash(s.cash_after_purchase)}
-              </span>
-              {s.months_to_save !== null && s.months_to_save !== undefined && (
-                <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-zinc-300">
-                  {s.months_to_save} month{s.months_to_save > 1 ? "s" : ""} to save
-                </span>
-              )}
-              {s.goal_delay_months !== null && s.goal_delay_months !== undefined && (
-                <span className={`rounded-md px-1.5 py-0.5 ${
-                  s.goal_delay_months > 0
-                    ? "bg-rose-500/15 text-rose-300"
-                    : s.goal_delay_months < 0
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : "bg-zinc-800 text-zinc-400"
-                }`}>
-                  goal {s.goal_delay_months > 0 ? `+${s.goal_delay_months} mo` : s.goal_delay_months < 0 ? `${s.goal_delay_months} mo` : "no delay"}
-                </span>
-              )}
-            </div>
-            {s.detail && <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-500">{s.detail}</p>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function GoalImpactBlock({ impacts }: { impacts: DecisionGoalImpact[] }) {
-  const delayTxt = (d: number | null) => {
-    if (d === null || d === undefined) return "timeline unavailable";
-    if (d > 0) return `delayed by ${d} month${d > 1 ? "s" : ""}`;
-    if (d < 0) return `accelerated by ${-d} month${-d > 1 ? "s" : ""}`;
-    return "unchanged";
-  };
-  return (
-    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-300">
-        <Target className="size-3.5" /> Goal impact
-      </p>
-      <div className="space-y-1.5">
-        {impacts.length === 0 && <p className="text-xs text-zinc-500">No goals set up.</p>}
-        {impacts.map((g, i) => (
-          <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-medium text-zinc-200">{g.goal}</span>
-              <span className={`text-[10px] font-semibold ${
-                g.delay_months !== null && g.delay_months > 0
-                  ? "text-rose-300"
-                  : g.delay_months !== null && g.delay_months < 0
-                    ? "text-emerald-300"
-                    : "text-zinc-400"
-              }`}>
-                {delayTxt(g.delay_months)}
-              </span>
-            </div>
-            <p className="mt-1 text-[10px] text-zinc-500">
-              {g.months_baseline !== null
-                ? `${g.months_baseline} mo → ${g.months_after_purchase ?? "—"} mo`
-                : "no baseline"} · {inr(g.remaining)} remaining
-              {g.required_monthly_baseline !== null && g.required_monthly_scenario !== null && (
-                <> · required monthly {inr(g.required_monthly_baseline)} → {inr(g.required_monthly_scenario)}</>
-              )}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TraceFlow({ activity }: { activity: ActivityStep[] }) {
-  const nodes = activity.map((s) => {
-    const llm = s.tool.includes("llm:");
-    if (s.step === "Intent detected") {
-      return { icon: <BrainCircuit className="size-3" />, label: "Understand intent", detail: s.tool, tone: llm ? "text-emerald-300" : "text-zinc-400" };
-    }
-    if (s.step === "Tool plan built") {
-      return { icon: <ListChecks className="size-3" />, label: "Build tool plan", detail: s.tool, tone: llm ? "text-emerald-300" : "text-zinc-400" };
-    }
-    if (s.step === "Tool executed" && s.tool === "evaluate_affordability") {
-      return { icon: <Gauge className="size-3" />, label: "Deterministic simulation", detail: s.detail, tone: "text-violet-300" };
-    }
-    if (s.step === "Tool executed") {
-      return { icon: <FlaskConical className="size-3" />, label: "Run verified financial tools", detail: s.tool, tone: "text-zinc-400" };
-    }
-    if (s.step === "Tool failed") {
-      return { icon: <AlertTriangle className="size-3" />, label: `Tool failed — ${s.tool}`, detail: s.detail, tone: "text-rose-300" };
-    }
-    if (s.step === "Response generated") {
-      return { icon: <Sparkles className="size-3" />, label: "Grounded AI explanation", detail: s.tool, tone: llm ? "text-emerald-300" : "text-zinc-400" };
-    }
-    return { icon: <Info className="size-3" />, label: s.step, detail: s.tool, tone: "text-zinc-400" };
-  });
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-        <Activity className="size-3.5" /> Agent trace
-      </p>
-      <ol className="space-y-2">
-        <li className="flex items-center gap-2 text-xs">
-          <span className="grid size-4 place-items-center rounded-full bg-zinc-800 text-zinc-300">
-            <CircleDollarSign className="size-3" />
-          </span>
-          <span className="text-zinc-300">Your question</span>
-          <span className="ml-auto text-[10px] text-zinc-600">natural language</span>
-        </li>
-        {nodes.map((n, i) => (
-          <li key={i} className="flex items-center gap-2 text-xs">
-            <span className="grid size-4 place-items-center rounded-full bg-zinc-800">
-              {n.icon}
-            </span>
-            <span className={n.tone}>{n.label}</span>
-            <span className="ml-auto max-w-[45%] truncate text-[10px] text-zinc-600">{n.detail}</span>
-          </li>
-        ))}
-        <li className="flex items-center gap-2 text-xs">
-          <span className="grid size-4 place-items-center rounded-full bg-emerald-500/15 text-emerald-400">
-            <BadgeCheck className="size-3" />
-          </span>
-          <span className="text-emerald-300">Verified decision delivered</span>
-          <span className="ml-auto text-[10px] text-zinc-600">grounded in deterministic evidence</span>
-        </li>
-      </ol>
-    </div>
-  );
-}
-
-/* ================== Subscription Guardian (Phase 7) ================= */
-
-function GuardianSection({
-  guardian, summary, actions, onApprove, onReject, onCreateDraft, draftMerchant,
-}: {
-  guardian: GuardianDetectResponse | null;
-  summary: GuardianSummaryResponse | null;
-  actions: ActionDraft[];
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-  onCreateDraft: (merchant: string) => void;
-  draftMerchant: string | null;
-}) {
-  if (!guardian) return null;
-  const changed = guardian.items.filter((i) => i.signal === "PRICE_INCREASE");
-  const draftFor = (merchant: string) =>
-    actions.find((a) => a.title.includes(merchant) && a.title.includes("Review"));
-
-  return (
-    <section className="mx-auto max-w-7xl px-5 pt-4 pb-1">
-      <div className="rounded-2xl border border-amber-500/25 bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950 p-5 sm:p-7">
-        {/* Header */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">
-            <Shield className="mr-1 size-3" /> subscription guardian
-          </Badge>
-          <Badge variant="outline" className="text-zinc-400">
-            finds recurring payments worth reviewing
-          </Badge>
-        </div>
-        <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-          FinPilot watches your recurring payments for price changes and flags
-          them for review. Every action is a draft — FinPilot will never cancel
-          or contact anyone automatically.
-          {summary && summary.changed_count > 0 && (
-            <span className="ml-2 font-medium text-amber-300">
-              {summary.changed_count} subscription{summary.changed_count > 1 ? "s" : ""} changed
-            </span>
-          )}
-        </p>
-
-        {changed.length === 0 && (
-          <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-            <p className="text-sm text-zinc-400">
-              No subscription price changes detected. Your recurring payments look stable.
-            </p>
-          </div>
-        )}
-
-        {changed.map((item) => {
-          const existing = draftFor(item.merchant);
-          const isCreating = draftMerchant === item.merchant;
-          return (
-            <div key={item.merchant} className="mt-4 space-y-3">
-              {/* Main card */}
-              <div className="rounded-xl border border-amber-500/20 bg-zinc-900/60 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="grid size-10 place-items-center rounded-xl bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30">
-                      <Zap className="size-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-zinc-100">{item.merchant}</h3>
-                      <p className="text-xs text-zinc-500">{item.category || "Subscription"} · {item.frequency}</p>
-                    </div>
-                  </div>
-                  <Badge variant={existing ? (existing.status === "approved" ? "default" : "secondary") : "destructive"}>
-                    {existing
-                      ? existing.status === "approved" ? "Approved" : existing.status === "rejected" ? "Rejected" : "Draft ready"
-                      : "Price increase detected"}
-                  </Badge>
-                </div>
-
-                {/* Amounts */}
-                <div className="mt-3 flex flex-wrap items-baseline gap-4">
-                  <div>
-                    <span className="text-xs text-zinc-500">Was</span>
-                    <span className="ml-1.5 text-sm font-semibold text-zinc-300">{inr(item.previous_amount)}/mo</span>
-                  </div>
-                  <ArrowUpRight className="size-4 text-amber-400" />
-                  <div>
-                    <span className="text-xs text-zinc-500">Now</span>
-                    <span className="ml-1.5 text-sm font-semibold text-zinc-100">{inr(item.current_amount)}/mo</span>
-                  </div>
-                  <div className="rounded-lg bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300">
-                    +{inr(item.increase_amount)}/mo
-                  </div>
-                  <div className="rounded-lg bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-300">
-                    +{inr(item.annual_increase)}/yr
-                  </div>
-                </div>
-
-                {/* Why flagged */}
-                <div className="mt-3 rounded-lg bg-zinc-800/50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Why this was flagged</p>
-                  <ul className="mt-1 space-y-1 text-sm text-zinc-300">
-                    <li className="flex items-center gap-2">
-                      <span className="text-amber-400">↑</span>
-                      <span>
-                        <strong>{inr(item.previous_amount)}</strong> → <strong>{inr(item.current_amount)}</strong>/month
-                        ({item.increase_percent?.toFixed(1)}% increase)
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="text-red-400">+</span>
-                      <span>That&apos;s approximately <strong>{inr(item.annual_increase)}</strong>/year more</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="text-zinc-400">→</span>
-                      <span>Current annual cost: <strong>{inr(item.annual_cost)}</strong></span>
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Evidence */}
-                {item.evidence_refs?.length > 0 && (
-                  <div className="mt-2 text-[11px] text-zinc-600">
-                    Evidence: {item.evidence_refs.slice(0, 4).join(", ")}
-                    {item.evidence_refs.length > 4 && ` +${item.evidence_refs.length - 4} more`}
-                  </div>
-                )}
-              </div>
-
-              {/* Draft flow */}
-              {existing ? (
-                <div className="flex items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-800/30 p-3">
-                  {existing.status === "draft" && (
-                    <>
-                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500"
-                        onClick={() => onApprove(existing.id)}>
-                        <CheckCircle2 className="mr-1 size-3" /> Approve
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400"
-                        onClick={() => onReject(existing.id)}>
-                        <XCircle className="mr-1 size-3" /> Reject
-                      </Button>
-                    </>
-                  )}
-                  {existing.status !== "draft" && (
-                    <span className="text-xs text-zinc-500">
-                      {existing.status === "approved" ? "You approved this review" : "You rejected this review"}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <Button
-                  size="sm"
-                  className="bg-amber-600 hover:bg-amber-500"
-                  disabled={isCreating}
-                  onClick={() => onCreateDraft(item.merchant)}
-                >
-                  {isCreating ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Clock className="mr-1 size-3" />}
-                  {isCreating ? "Creating draft…" : "Review subscription"}
-                </Button>
-              )}
-
-              {/* Agent trace */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
-                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                  <Activity className="size-3.5" /> Agent trace
-                </p>
-                <ol className="space-y-2">
-                  {[
-                    { label: "Subscription detected", detail: `recurring ${item.frequency} payment`, tone: "text-zinc-300" },
-                    { label: "Recurring payment analysis", detail: `${item.payment_count} historical payments`, tone: "text-zinc-300" },
-                    { label: "Price change verified", detail: `${inr(item.previous_amount)} → ${inr(item.current_amount)} confirmed by 2+ consecutive payments`, tone: "text-amber-300" },
-                    { label: "Annual impact calculated", detail: `${inr(item.increase_amount)}/mo × 12 = ${inr(item.annual_increase)}/yr`, tone: "text-amber-300" },
-                    { label: "Action draft created", detail: `Review ${item.merchant} price increase`, tone: "text-amber-300" },
-                    { label: "Waiting for approval", detail: "FinPilot will not execute automatically", tone: "text-zinc-500" },
-                  ].map((s, i) => (
-                    <li key={i} className="flex items-center gap-2 text-xs">
-                      <span className="grid size-4 place-items-center rounded-full bg-zinc-800">
-                        {i === 0 ? <Target className="size-3" /> : i === 5 ? <Clock className="size-3" /> : <Zap className="size-3" />}
-                      </span>
-                      <span className={s.tone}>{s.label}</span>
-                      <span className="ml-auto max-w-[45%] truncate text-[10px] text-zinc-600">{s.detail}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
   );
 }
