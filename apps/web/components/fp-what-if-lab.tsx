@@ -66,7 +66,7 @@ export function WhatIfLab({ recurring }: WhatIfLabProps) {
     <div className="rounded-xl p-4" style={{ background: "var(--color-fp-surface)", border: "1px solid var(--color-fp-border)" }}>
       <div className="flex items-center gap-2 mb-3">
         <TrendingUp className="size-3.5" style={{ color: "var(--color-fp-violet)" }} />
-        <p className="fp-label-card" style={{ color: "var(--color-fp-violet)" }}>WHAT-IF LAB</p>
+        <p className="fp-label-card">What-if lab</p>
       </div>
 
       {/* Presets */}
@@ -137,7 +137,7 @@ export function WhatIfLab({ recurring }: WhatIfLabProps) {
         disabled={simBusy}
         className="mt-3 w-full gap-1.5"
         style={{
-          background: simBusy ? "var(--color-fp-surface-raised)" : "var(--color-fp-violet)",
+          background: simBusy ? "var(--color-fp-surface-raised)" : "linear-gradient(135deg, #7c3aed, #9333ea)",
           color: simBusy ? "var(--color-fp-text-muted)" : "white",
           border: "1px solid var(--color-fp-border)",
         }}

@@ -40,15 +40,17 @@
   --color-fp-sky-dim: rgba(56, 189, 248, 0.12);
 
   /* Surface palette — near-black foundation */
-  --color-fp-bg: #0a0b0d;
-  --color-fp-surface: #111318;
-  --color-fp-surface-raised: #181b22;
-  --color-fp-surface-overlay: #1e2128;
-  --color-fp-border: rgba(255, 255, 255, 0.06);
-  --color-fp-border-subtle: rgba(255, 255, 255, 0.03);
-  --color-fp-text: #f0f0f2;
-  --color-fp-text-muted: #8b8d95;
-  --color-fp-text-dim: #5a5c64;
+  --color-fp-bg: #07090d;
+  --color-fp-surface: #0f141b;
+  --color-fp-surface-raised: #141b24;
+  --color-fp-surface-overlay: #1a222d;
+  --color-fp-border: rgba(148,163,184,0.18);
+  --color-fp-border-subtle: rgba(148,163,184,0.10);
+  --color-fp-text: #f8fafc;
+  --color-fp-text-primary: #f8fafc;
+  --color-fp-text-secondary: #c3ccd8;
+  --color-fp-text-muted: #a7b1bf;
+  --color-fp-text-dim: #8792a2;
 
   /* shadcn overrides */
   --color-card: var(--color-fp-surface);
@@ -56,7 +58,7 @@
   --color-popover: var(--color-fp-surface-raised);
   --color-popover-foreground: var(--color-fp-text);
   --color-primary: var(--color-fp-green);
-  --color-primary-foreground: #0a0b0d;
+  --color-primary-foreground: #06110d;
   --color-secondary: var(--color-fp-surface-raised);
   --color-secondary-foreground: var(--color-fp-text);
   --color-muted: var(--color-fp-surface);
@@ -66,7 +68,7 @@
   --color-destructive: var(--color-fp-rose);
   --color-border: var(--color-fp-border);
   --color-input: var(--color-fp-surface-raised);
-  --color-ring: rgba(52, 211, 153, 0.40);
+  --color-ring: rgba(139,92,246,0.40);
   --radius: 0.75rem;
 
   /* Chart palette */
@@ -140,8 +142,8 @@
     color: var(--color-fp-text-muted);
   }
   .fp-label-card {
-    @apply text-[11px] font-medium uppercase tracking-wide;
-    color: var(--color-fp-text-dim);
+    @apply text-[13px] font-semibold tracking-wide;
+    color: #e2e8f0;
   }
   .fp-label-secondary {
     @apply text-[10px] font-medium uppercase tracking-wide;
@@ -163,6 +165,30 @@
     background: var(--color-fp-surface-overlay);
     border: 1px solid var(--color-fp-border);
     border-radius: var(--radius-lg);
+  }
+
+  /* Section heading style */
+  .fp-section-title {
+    color: #f1f5f9;
+    font-size: 1rem;
+    line-height: 1.3;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .fp-section-description {
+    color: #a7b1bf;
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+  .fp-card-title {
+    color: #e8edf5;
+    font-weight: 600;
+  }
+  .fp-card-description {
+    color: #a7b1bf;
+  }
+  .fp-meta {
+    color: #7f8b9b;
   }
 
   /* Semantic glow effects (subtle, not decorative) */

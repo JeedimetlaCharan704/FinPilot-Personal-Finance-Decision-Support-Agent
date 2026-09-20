@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 export function FpHeader({ apiUp }: { apiUp: boolean | null }) {
   return (
     <header
-      className="sticky top-0 z-30 border-b border-white/[0.06] backdrop-blur-xl"
-      style={{ background: "rgba(10,11,13,0.85)" }}
+      className="sticky top-0 z-30 border-b border-white/[0.12] backdrop-blur-xl"
+      style={{ background: "rgba(7,9,13,0.88)" }}
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3">
         {/* Brand */}

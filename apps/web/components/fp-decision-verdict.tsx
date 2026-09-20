@@ -51,7 +51,7 @@ export function DecisionVerdictCard({ agent }: { agent: AgentAnswer }) {
               <Gauge className="size-5" style={{ color: meta.color }} />
             </div>
             <div>
-              <p className="fp-label-secondary">DECISION</p>
+              <p className="fp-label-card">Decision</p>
               <p className="text-xs" style={{ color: "var(--color-fp-text-muted)" }}>
                 {agent.intent} · {agent.mode === "llm" ? `AI-assisted` : "deterministic"}
               </p>
@@ -71,7 +71,7 @@ export function DecisionVerdictCard({ agent }: { agent: AgentAnswer }) {
           {/* Purchase amount + verdict */}
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="fp-label-card">PURCHASE AMOUNT</p>
+              <p className="fp-label-card">Purchase amount</p>
               <p className="fp-number-decision mt-1">{inr(d.purchase_amount)}</p>
             </div>
             <p
@@ -84,15 +84,15 @@ export function DecisionVerdictCard({ agent }: { agent: AgentAnswer }) {
 
           {/* Key numbers grid — 4 most important numbers */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <NumberCell label="FREE CASH" value={inr(d.free_cash)} color="var(--color-fp-green)" />
+            <NumberCell label="Free cash" value={inr(d.free_cash)} color="var(--color-fp-green)" />
             <NumberCell
-              label="CASH AFTER"
+              label="Cash after"
               value={fmtCash(d.cash_after_purchase)}
               color={d.cash_after_purchase < 0 ? "var(--color-fp-rose)" : "var(--color-fp-green)"}
             />
-            <NumberCell label="COMMITTED" value={inr(d.committed_outflows)} color="var(--color-fp-amber)" />
+            <NumberCell label="Committed" value={inr(d.committed_outflows)} color="var(--color-fp-amber)" />
             <NumberCell
-              label="MONTHS TO SAVE"
+              label="Months to save"
               value={d.months_to_save != null ? `${d.months_to_save}` : "—"}
               color="var(--color-fp-sky)"
             />
@@ -169,7 +169,7 @@ function ScenarioRow({ scenarios }: { scenarios: DecisionScenario[] }) {
   return (
     <div>
       <p className="mb-3 flex items-center gap-1.5 fp-label-card" style={{ color: "var(--color-fp-violet)" }}>
-        <Target className="size-3" /> SCENARIOS
+        <Target className="size-3" /> Scenarios
       </p>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {scenarios.map((s, i) => (
@@ -223,7 +223,7 @@ function GoalImpactBlock({ impacts }: { impacts: DecisionGoalImpact[] }) {
   return (
     <div>
       <p className="mb-3 flex items-center gap-1.5 fp-label-card" style={{ color: "var(--color-fp-green)" }}>
-        <Target className="size-3" /> GOAL IMPACT
+        <Target className="size-3" /> Goal impact
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
         {impacts.map((g, i) => {
@@ -265,7 +265,7 @@ function AgentTraceInline({ activity }: { activity: AgentAnswer["activity"] }) {
   return (
     <div>
       <p className="mb-3 flex items-center gap-1.5 fp-label-card" style={{ color: "var(--color-fp-sky)" }}>
-        <BrainCircuit className="size-3" /> AGENT TRACE
+        <BrainCircuit className="size-3" /> Agent trace
       </p>
       <ol className="space-y-1.5">
         {activity.map((a, i) => (

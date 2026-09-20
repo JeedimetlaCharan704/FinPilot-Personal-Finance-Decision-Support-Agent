@@ -23,25 +23,25 @@ export function SecondaryRail({ monthly, recurring, budget, goals }: SecondaryRa
       {/* Stat tiles */}
       <div className="grid grid-cols-2 gap-2.5">
         <StatTile
-          label="NET CASH FLOW"
+          label="Net cash flow"
           value={inr(net)}
           sub={`${pct(savingsRate)} savings rate`}
           color={net >= 0 ? "var(--color-fp-green)" : "var(--color-fp-rose)"}
         />
         <StatTile
-          label="MONTHLY SPENDING"
+          label="Monthly spending"
           value={inr(monthly?.expenses ?? 0)}
           sub={monthly ? `${monthly.transactions_analyzed} transactions` : "…"}
           color="var(--color-fp-rose)"
         />
         <StatTile
-          label="SAVINGS RATE"
+          label="Savings rate"
           value={pct(savingsRate)}
           sub={monthly?.period_label ?? "…"}
           color={savingsRate > 20 ? "var(--color-fp-green)" : "var(--color-fp-amber)"}
         />
         <StatTile
-          label="COMMITTED"
+          label="Committed"
           value={inr(recurring?.monthly_committed ?? 0)}
           sub={`${inr(recurring?.annualized_recurring_cost ?? 0)}/yr`}
           color="var(--color-fp-amber)"
@@ -52,41 +52,41 @@ export function SecondaryRail({ monthly, recurring, budget, goals }: SecondaryRa
       <div
         className="rounded-xl p-4"
         style={{
-          background: "linear-gradient(135deg, var(--color-fp-green-dim) 0%, var(--color-fp-surface) 100%)",
-          border: "1px solid var(--color-fp-green-ring)",
+          background: "linear-gradient(135deg, #dce9e7 0%, #cbd8d7 100%)",
+          border: "1px solid #b0c0c0",
         }}
       >
         <div className="flex items-center gap-2">
-          <Sparkles className="size-3.5" style={{ color: "var(--color-fp-green)" }} />
-          <p className="fp-label-card" style={{ color: "var(--color-fp-green)" }}>AI INSIGHT</p>
+          <Sparkles className="size-3.5" style={{ color: "#1e293b" }} />
+          <p className="fp-label-card" style={{ color: "#1e293b" }}>AI Insight</p>
         </div>
         <div className="mt-2">
           {monthly?.insights?.length ? (
-            <ul className="space-y-1.5 text-xs" style={{ color: "var(--color-fp-text-muted)" }}>
+            <ul className="space-y-1.5 text-xs" style={{ color: "#334155" }}>
               {monthly.insights.slice(0, 3).map((ins, i) => (
                 <li key={i} className="flex gap-2">
-                  <ArrowUpRight className="mt-0.5 size-3 shrink-0" style={{ color: "var(--color-fp-green)" }} />
+                  <ArrowUpRight className="mt-0.5 size-3 shrink-0" style={{ color: "#16a34a" }} />
                   {ins}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs" style={{ color: "var(--color-fp-text-dim)" }}>Loading insight…</p>
+            <p className="text-xs" style={{ color: "#64748b" }}>Loading insight…</p>
           )}
         </div>
         {budget && (
-          <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center" style={{ borderColor: "var(--color-fp-border)" }}>
+          <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center" style={{ borderColor: "#a3b8b6" }}>
             <div>
-              <p className="text-[10px]" style={{ color: "var(--color-fp-text-dim)" }}>Committed</p>
-              <p className="text-xs font-semibold" style={{ color: "var(--color-fp-amber)" }}>{inr(budget.committed)}</p>
+              <p className="text-[10px]" style={{ color: "#475569" }}>Committed</p>
+              <p className="text-xs font-semibold" style={{ color: "#b45309" }}>{inr(budget.committed)}</p>
             </div>
             <div>
-              <p className="text-[10px]" style={{ color: "var(--color-fp-text-dim)" }}>Spent</p>
-              <p className="text-xs font-semibold" style={{ color: "var(--color-fp-rose)" }}>{inr(budget.spent)}</p>
+              <p className="text-[10px]" style={{ color: "#475569" }}>Spent</p>
+              <p className="text-xs font-semibold" style={{ color: "#dc2626" }}>{inr(budget.spent)}</p>
             </div>
             <div>
-              <p className="text-[10px]" style={{ color: "var(--color-fp-text-dim)" }}>Discretionary</p>
-              <p className="text-xs font-semibold" style={{ color: "var(--color-fp-green)" }}>{inr(budget.discretionary)}</p>
+              <p className="text-[10px]" style={{ color: "#475569" }}>Discretionary</p>
+              <p className="text-xs font-semibold" style={{ color: "#16a34a" }}>{inr(budget.discretionary)}</p>
             </div>
           </div>
         )}
@@ -97,7 +97,7 @@ export function SecondaryRail({ monthly, recurring, budget, goals }: SecondaryRa
         <div className="rounded-xl p-4" style={{ background: "var(--color-fp-surface)", border: "1px solid var(--color-fp-border)" }}>
           <div className="flex items-center gap-2 mb-3">
             <Target className="size-3.5" style={{ color: "var(--color-fp-green)" }} />
-            <p className="fp-label-card" style={{ color: "var(--color-fp-text-muted)" }}>GOALS</p>
+            <p className="fp-label-card">Goals</p>
           </div>
           <div className="space-y-3">
             {goals.map((g) => (
@@ -113,7 +113,7 @@ export function SecondaryRail({ monthly, recurring, budget, goals }: SecondaryRa
                     className="fp-progress-fill"
                     style={{
                       width: `${Math.min(100, g.progress_pct)}%`,
-                      background: "var(--color-fp-green)",
+                      background: "linear-gradient(90deg, #19d3a2, #2dd4bf)",
                     }}
                   />
                 </div>
@@ -135,8 +135,8 @@ export function SecondaryRail({ monthly, recurring, budget, goals }: SecondaryRa
         <div className="rounded-xl p-4" style={{ background: "var(--color-fp-surface)", border: "1px solid var(--color-fp-border)" }}>
           <div className="flex items-center gap-2 mb-3">
             <PieChart className="size-3.5" style={{ color: "var(--color-fp-violet)" }} />
-            <p className="fp-label-card" style={{ color: "var(--color-fp-text-muted)" }}>
-              SPENDING · {monthly.period_label}
+            <p className="fp-label-card">
+              Spending · {monthly.period_label}
             </p>
           </div>
           <SpendingBars categories={monthly.category_breakdown} />
@@ -163,7 +163,7 @@ function UpcomingMini() {
     <div className="rounded-xl p-4" style={{ background: "var(--color-fp-surface)", border: "1px solid var(--color-fp-border)" }}>
       <div className="flex items-center gap-2 mb-2">
         <BadgeCheck className="size-3.5" style={{ color: "var(--color-fp-sky)" }} />
-        <p className="fp-label-card" style={{ color: "var(--color-fp-text-muted)" }}>UPCOMING</p>
+        <p className="fp-label-card">Upcoming</p>
       </div>
       <ul className="space-y-1.5">
         {items.map((i) => (

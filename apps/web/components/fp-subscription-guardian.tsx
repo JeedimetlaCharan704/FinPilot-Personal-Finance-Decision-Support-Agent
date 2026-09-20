@@ -37,7 +37,7 @@ export function SubscriptionGuardian({
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary" className="border-white/[0.08] bg-white/[0.04]">
             <Shield className="mr-1 size-3" style={{ color: "var(--color-fp-amber)" }} />
-            <span style={{ color: "var(--color-fp-text-muted)" }}>subscription guardian</span>
+            <span style={{ color: "var(--color-fp-text-muted)" }}>Subscription guardian</span>
           </Badge>
           <Badge variant="outline" className="border-white/[0.08] bg-white/[0.03]">
             <span style={{ color: "var(--color-fp-text-dim)" }}>
@@ -141,7 +141,7 @@ export function SubscriptionGuardian({
 
                 {/* Why flagged */}
                 <div className="mt-3 rounded-lg p-3" style={{ background: "var(--color-fp-bg)" }}>
-                  <p className="fp-label-secondary" style={{ color: "var(--color-fp-text-dim)" }}>WHY FLAGGED</p>
+                  <p className="fp-label-secondary" style={{ color: "var(--color-fp-text-dim)" }}>Why flagged</p>
                   <ul className="mt-1.5 space-y-1 text-xs" style={{ color: "var(--color-fp-text-muted)" }}>
                     <li>
                       <strong className="text-white">{inr(item.previous_amount)}</strong> → <strong className="text-white">{inr(item.current_amount)}</strong>/month

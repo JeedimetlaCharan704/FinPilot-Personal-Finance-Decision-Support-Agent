@@ -23,19 +23,19 @@ export function FpHero({ onAsk, thinking }: FpHeroProps) {
   return (
     <section className="mx-auto max-w-7xl px-5 pt-8 pb-2 sm:pt-12">
       <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8" style={{
-        background: "linear-gradient(135deg, var(--color-fp-surface) 0%, var(--color-fp-surface-raised) 50%, var(--color-fp-bg) 100%)",
+        background: "linear-gradient(135deg, rgba(139,92,246,0.12) 0%, var(--color-fp-surface) 45%, var(--color-fp-bg) 100%)",
         border: "1px solid var(--color-fp-border)",
       }}>
         {/* Subtle accent glow */}
         <div
-          className="pointer-events-none absolute -right-20 -top-20 size-60 rounded-full opacity-20 blur-3xl"
-          style={{ background: "var(--color-fp-green)" }}
+          className="pointer-events-none absolute -right-20 -top-20 size-60 rounded-full opacity-15 blur-3xl"
+          style={{ background: "var(--color-fp-violet)" }}
         />
 
         <div className="relative">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary" className="border-white/[0.08] bg-white/[0.04]">
-              <Gauge className="mr-1 size-3" style={{ color: "var(--color-fp-green)" }} />
+              <Gauge className="mr-1 size-3" style={{ color: "var(--color-fp-violet)" }} />
               <span style={{ color: "var(--color-fp-text-muted)" }}>decision agent</span>
             </Badge>
             <Badge variant="outline" className="border-white/[0.08] bg-white/[0.03]">
@@ -47,7 +47,7 @@ export function FpHero({ onAsk, thinking }: FpHeroProps) {
 
           <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
             <span className="text-white">Can I afford</span>{" "}
-            <span style={{ color: "var(--color-fp-green)" }}>this?</span>
+            <span style={{ color: "var(--color-fp-violet)" }}>this?</span>
           </h2>
 
           <p className="mt-3 max-w-2xl text-sm leading-relaxed" style={{ color: "var(--color-fp-text-muted)" }}>
@@ -73,10 +73,10 @@ export function FpHero({ onAsk, thinking }: FpHeroProps) {
               onChange={(e) => setHeroInput(e.target.value)}
               placeholder="Can I afford a ₹65,000 laptop next month?"
               aria-label="Ask FinPilot about a purchase you are considering"
-              className="h-12 flex-1 rounded-xl px-4 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-fp-green)]/40"
+              className="h-12 flex-1 rounded-xl px-4 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/40"
               style={{
-                background: "var(--color-fp-bg)",
-                border: "1px solid var(--color-fp-border)",
+                background: "#0b1017",
+                border: "1px solid #293544",
               }}
             />
             <Button
@@ -84,9 +84,9 @@ export function FpHero({ onAsk, thinking }: FpHeroProps) {
               disabled={thinking || !heroInput.trim()}
               className="h-12 px-6 sm:w-36"
               style={{
-                background: thinking ? "var(--color-fp-surface-raised)" : "var(--color-fp-green)",
-                color: thinking ? "var(--color-fp-text-muted)" : "var(--color-fp-bg)",
-                border: "1px solid var(--color-fp-border)",
+                background: thinking ? "var(--color-fp-surface-raised)" : "linear-gradient(135deg, #7c3aed, #9333ea)",
+                color: thinking ? "var(--color-fp-text-muted)" : "white",
+                border: "1px solid rgba(124,58,237,0.40)",
               }}
             >
               {thinking ? (
@@ -107,7 +107,7 @@ export function FpHero({ onAsk, thinking }: FpHeroProps) {
                 className="rounded-full px-3 py-1.5 text-[11px] transition-all hover:scale-[1.02]"
                 style={{
                   background: "var(--color-fp-surface-raised)",
-                  border: "1px solid var(--color-fp-border)",
+                  border: "1px solid #293544",
                   color: "var(--color-fp-text-muted)",
                 }}
               >

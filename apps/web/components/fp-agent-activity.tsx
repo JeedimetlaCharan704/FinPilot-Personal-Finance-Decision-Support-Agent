@@ -33,7 +33,7 @@ export function AgentActivity({ runs }: AgentActivityProps) {
     <div className="rounded-xl overflow-hidden" style={{ background: "var(--color-fp-surface)", border: "1px solid var(--color-fp-border)" }}>
       <div className="flex items-center gap-2 px-4 py-2.5">
         <Activity className="size-3.5" style={{ color: "var(--color-fp-sky)" }} />
-        <p className="fp-label-card" style={{ color: "var(--color-fp-text-muted)" }}>DECISION HISTORY</p>
+        <p className="fp-label-card">Decision history</p>
         <Badge variant="outline" className="text-[10px]" style={{ color: "var(--color-fp-text-dim)" }}>
           {runs.length}
         </Badge>

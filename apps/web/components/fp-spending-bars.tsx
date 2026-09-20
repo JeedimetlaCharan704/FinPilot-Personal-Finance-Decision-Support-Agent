@@ -24,10 +24,10 @@ export function SpendingBars({ categories }: SpendingBarsProps) {
           <div className="fp-progress-track flex-1">
             <div
               className="fp-progress-fill"
-              style={{
-                width: `${(c.amount / max) * 100}%`,
-                background: "var(--color-fp-violet)",
-              }}
+                style={{
+                  width: `${(c.amount / max) * 100}%`,
+                  background: "linear-gradient(90deg, #7c3aed, #8b5cf6)",
+                }}
             />
           </div>
           <span className="w-16 shrink-0 text-right text-[11px] font-medium text-white">
