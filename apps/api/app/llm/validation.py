@@ -16,7 +16,7 @@ from app.llm.schemas import LLMAnswerOut, LLMIntentOut, LLMToolPlan
 VALID_INTENTS = frozenset({
     "overview", "spend_most", "category_amount", "subscriptions", "what_changed",
     "afford_purchase", "rent_increase", "committed", "goal_save", "goal_track",
-    "upcoming", "anomaly",
+    "upcoming", "anomaly", "guardian",
 })
 
 MAX_ANSWER_CHARS = 2000
@@ -39,6 +39,7 @@ TOOL_ALLOWED_ARGS: dict[str, frozenset[str]] = {
     "calculate_committed_budget": frozenset({"year", "month"}),
     "get_upcoming_obligations": frozenset({"days"}),
     "evaluate_affordability": frozenset({"amount"}),
+    "guardian_detect": frozenset(),
 }
 
 

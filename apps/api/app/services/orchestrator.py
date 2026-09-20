@@ -358,6 +358,10 @@ def _tool_detail(tool_name: str, out: dict) -> str:
         if tool_name == "evaluate_affordability":
             return (f"verdict {out.get('verdict', 'n/a')}, "
                     f"free cash {_inr(out.get('free_cash', 0))}")
+        if tool_name == "guardian_detect":
+            s = out.get("summary", {}) or {}
+            return (f"{s.get('changed_count', 0)} price changes across "
+                    f"{s.get('items_total', 0)} recurring payments")
     except Exception:
         pass
     return "ok"
@@ -376,6 +380,7 @@ def build_response(intent: str, question: str, results: dict) -> dict:
     sim_change = results.get("simulate_expense_change") or {}
     upcoming = results.get("get_upcoming_obligations") or {}
     transactions = results.get("get_transactions") or {}
+    gd = results.get("guardian_detect") or {}
 
     base = {
         "insights": summary.get("insights", []) if isinstance(summary, dict) else [],
@@ -564,6 +569,43 @@ def build_response(intent: str, question: str, results: dict) -> dict:
         else:
             base["answer"] = f"No anomalies were detected in {anomalies.get('period', 'the period')} based on the configured thresholds."
 
+    elif intent == "guardian":
+        base["answer"] = _guardian_answer(gd)
+        changed = [i for i in gd.get("items", []) if i["signal"] == "PRICE_INCREASE"]
+        for i in gd.get("items", []):
+            detail = f"{i.get('frequency', 'monthly')}, category {i['category'] or 'n/a'}"
+            if i["signal"] == "PRICE_INCREASE":
+                ev(i["merchant"],
+                   f"{_inr(i['previous_amount'])} -> {_inr(i['current_amount'])}/month",
+                   f"+{_inr(i['increase_amount'])}/month ({_inr(i['annual_increase'])}/year), "
+                   f"last paid {i['latest_payment_date'] or 'n/a'}")
+                calc("current - previous",
+                     f"+{_inr(i['increase_amount'])}/month",
+                     f"{i['merchant']} price increase")
+                if i.get("increase_percent"):
+                    calc("(increase / previous) * 100",
+                         f"{i['increase_percent']:.2f}%",
+                         f"{i['merchant']} increase")
+                calc("monthly increase * 12",
+                     _inr(i["annual_increase"]),
+                     f"{i['merchant']} annualized increase")
+                base["assumptions"].append(
+                    f"{i['merchant']} amounts come from your transaction history only; "
+                    "Guardian never books, cancels or contacts anyone.")
+            else:
+                ev(i["merchant"], _inr(i["monthly_cost"]),
+                   f"{detail} — no change detected")
+                calc("monthly cost * 12", _inr(i["annual_cost"]),
+                     f"{i['merchant']} annualized cost")
+        if not changed:
+            base["assumptions"].append(
+                "Guardian compares each merchant against its own payment history; "
+                "no price change crossed the detection threshold.")
+        base["assumptions"].append(
+            "FinPilot will not cancel or contact anyone automatically — "
+            "draft actions require your explicit approval.")
+        base["answer"] = base["answer"] or "No subscription changes detected."
+
     else:
         base["answer"] = _overview_answer(summary)
 
@@ -747,6 +789,27 @@ def _goal_track_answer(goals: list) -> str:
     return "Goal progress: " + "; ".join(parts) + "."
 
 
+def _guardian_answer(gd: dict) -> str:
+    """Deterministic subscription-guardian answer. Cites only tool figures."""
+    changed = [i for i in gd.get("items", []) if i["signal"] == "PRICE_INCREASE"]
+    if not changed:
+        count = (gd.get("summary") or {}).get("items_total", 0)
+        if count:
+            return (f"Subscription Guardian reviewed {count} recurring "
+                    f"payments and found no price changes. Your recurring "
+                    f"payments look stable — no action is needed.")
+        return "Subscription Guardian found no recurring payments to review yet."
+    lines = []
+    for i in changed:
+        lines.append(f"{i['merchant']} increased from {_inr(i['previous_amount'])}/month "
+                     f"to {_inr(i['current_amount'])}/month (+{_inr(i['increase_amount'])}/month, "
+                     f"approximately {_inr(i['annual_increase'])}/year)")
+    return ("Subscription Guardian found " + ("a price increase: " if len(lines) == 1
+            else f"{len(lines)} price increases: ") + "; ".join(lines) +
+            ". No action has been taken automatically — a review draft is ready "
+            "for your approval.")
+
+
 def _recommendations(user_id: str, results: dict) -> list[dict]:
     """Create DRAFT action suggestions from findings (never executes anything)."""
     recs: list[dict] = []
@@ -780,4 +843,16 @@ def _recommendations(user_id: str, results: dict) -> list[dict]:
                 "description": (f"Goal is {g['progress_pct']:.1f}% funded; remaining "
                                 f"{_inr(g['remaining'])}."),
             })
+    # Subscription Guardian: price increases become review drafts (never executed).
+    for i in results.get("guardian_detect", {}).get("items", []):
+        if i["signal"] != "PRICE_INCREASE":
+            continue
+        recs.append({
+            "action_type": "review",
+            "title": f"Review {i['merchant']} price increase",
+            "description": (f"{i['merchant']} increased from {_inr(i['previous_amount'])}/month "
+                            f"to {_inr(i['current_amount'])}/month — adds "
+                            f"{_inr(i['increase_amount'])}/month (approximately "
+                            f"{_inr(i['annual_increase'])}/year)."),
+        })
     return recs

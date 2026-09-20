@@ -23,6 +23,8 @@ def generate_transactions(seed: int = 2026, month_count: int = 6) -> list[dict]:
     txn = 0
     today = date(2026, 1, 1)  # pinned, deterministic anchor
     start = today.replace(day=1)
+    # Netflix price increase month: 499 -> 649 from month 4 (April 2026).
+    price_inc_month = _add_months(start, 3)
 
     for m in range(month_count):
         ym = _add_months(start, m)
@@ -37,17 +39,18 @@ def generate_transactions(seed: int = 2026, month_count: int = 6) -> list[dict]:
         rows.append(_row(txn, "entertainment", "Movie / OTT", "PVR", rng.randint(250, 900), "expense", _day(ym, 18))); txn += 1
         rows.append(_row(txn, "shopping", "Shopping", "Myntra", rng.randint(500, 3000), "expense", _day(ym, 21))); txn += 1
 
-    # One subscription price increase: Netflix 499 -> 649 in month 4
-    price_inc_month = _add_months(start, 3)
-    inc = False
-    for r in rows:
-        if r["description"].lower() == "netflix":
-            r["amount"] = 649 if _parse_date(r["date"]) >= price_inc_month else 499
-            inc = True
-    if not inc:
-        rows.append(_row(txn, "subscriptions", "Netflix", "Netflix", 649, "expense", _day(price_inc_month, 10))); txn += 1
+        # Subscription Guardian demo: Netflix paid monthly on the 10th.
+        # Price increase 499 -> 649 from month 4 (April 2026) onward.
+        # Month 6 (June 2026) has no Netflix transaction yet (billing cycle
+        # next_payment_date = 2026-07-10), which keeps the June analytics
+        # (and therefore the Phase 6 affordability hero) byte-identical.
+        if m <= 4:
+            netflix_amount = 649 if ym >= price_inc_month else 499
+            rows.append(_row(txn, "subscriptions", "Netflix", "Netflix",
+                             netflix_amount, "expense", _day(ym, 10)))
+            txn += 1
 
-    # One anomalous month: large one-off purchase (â‚¹45,000 laptop) in month 5
+    # One anomalous month: large one-off purchase (₹45,000 laptop) in month 5
     anomaly = _add_months(start, 4)
     rows.append(_row(txn, "electronics", "Laptop purchase", "Croma", 45000, "expense", _day(anomaly, 20))); txn += 1
 

@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from app import db
-from app.services import affordability, analytics, anomalies, goals, simulations
+from app.services import affordability, analytics, anomalies, goals, guardian, simulations
 
 
 class ToolValidationError(ValueError):
@@ -99,6 +99,10 @@ def _evaluate_affordability(user_id: str, args: dict) -> dict:
     return affordability.evaluate_affordability(user_id, amount)
 
 
+def _guardian_detect(user_id: str, args: dict) -> dict:
+    return guardian.detect(user_id)
+
+
 TOOLS: dict[str, dict] = {
     "get_transactions": {
         "description": "Retrieve transactions (optionally date-bounded).",
@@ -167,6 +171,14 @@ TOOLS: dict[str, dict] = {
                         "impacts. Requires a positive 'amount' in INR."),
         "fn": _evaluate_affordability,
         "validate": lambda a: _require(a, "amount"),
+    },
+    "guardian_detect": {
+        "description": ("Subscription Guardian: recurring payments with price "
+                        "changes (PRICE_INCREASE), high annual costs and "
+                        "review signals. Produces the data behind suggested "
+                        "review actions. Read-only, never executes anything."),
+        "fn": _guardian_detect,
+        "validate": lambda a: _require(a),
     },
 }
 

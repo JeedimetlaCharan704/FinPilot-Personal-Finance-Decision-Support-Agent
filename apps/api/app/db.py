@@ -163,7 +163,7 @@ def fetch_transactions(user_id: str,
 
 def fetch_recurring(user_id: str, status: str | None = "active") -> list[dict[str, Any]]:
     query = _table("recurring_payments").select(
-        "id,merchant,description,amount,frequency,next_payment_date,status"
+        "id,merchant,description,amount,frequency,next_payment_date,status,category_id"
     ).eq("user_id", user_id)
     if status:
         query = query.eq("status", status)

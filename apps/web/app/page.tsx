@@ -4,20 +4,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, BadgeCheck,
   BrainCircuit, Bot, CheckCircle2, ChevronDown, CircleDollarSign,
-  FlaskConical, Gauge, Info, Landmark, ListChecks, Loader2, PieChart,
-  Scale, Send, Sparkles, Target, TrendingUp, Wallet, XCircle,
+  Clock, FlaskConical, Gauge, Info, Landmark, ListChecks, Loader2,
+  PieChart, Scale, Send, Shield, Sparkles, Target, TrendingUp, Wallet,
+  XCircle, Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  API_BASE, approveAction, askAgent, fetchActions, fetchBudget, fetchGoals,
-  fetchMonthly, fetchRecurring, fetchRuns, fetchUpcoming, inr, pct, rejectAction,
-  runSimulation,
+  API_BASE, approveAction, askAgent, createGuardianDraft, fetchActions, fetchBudget, fetchGoals,
+  fetchGuardian, fetchGuardianSummary, fetchMonthly, fetchRecurring, fetchRuns, fetchUpcoming,
+  inr, pct, rejectAction, runSimulation,
   type ActionDraft, type ActivityStep, type AgentAnswer, type AgentRun,
   type BudgetStatus, type DecisionGoalImpact, type DecisionScenario,
-  type Goal, type MonthlyAnalytics,
-  type RecurringAnalysis, type SimulationResult,
+  type Goal, type GuardianDetectResponse, type GuardianSummaryResponse,
+  type MonthlyAnalytics, type RecurringAnalysis, type SimulationResult,
 } from "@/lib/api";
 
 const QUESTION_CHIPS = [
@@ -74,15 +75,22 @@ export default function Home() {
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [simBusy, setSimBusy] = useState(false);
 
+  // Subscription Guardian (Phase 7)
+  const [guardian, setGuardian] = useState<GuardianDetectResponse | null>(null);
+  const [guardianSummary, setGuardianSummary] = useState<GuardianSummaryResponse | null>(null);
+  const [draftMerchant, setDraftMerchant] = useState<string | null>(null);
+
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [m, rc, g, b, a] = await Promise.all([
+      const [m, rc, g, b, a, gd, gs] = await Promise.all([
         fetchMonthly(), fetchRecurring(), fetchGoals(), fetchBudget(), fetchActions(),
+        fetchGuardian(), fetchGuardianSummary(),
       ]);
       setMonthly(m); setRecurring(rc);
       setGoals(g.goals); setBudget(b); setActions(a.actions);
+      setGuardian(gd); setGuardianSummary(gs);
       setApiUp(true);
     } catch {
       setApiUp(false);
@@ -124,6 +132,16 @@ export default function Home() {
   const onReject = useCallback(async (id: string) => {
     await rejectAction(id);
     setActions((await fetchActions()).actions);
+  }, []);
+
+  const onCreateGuardianDraft = useCallback(async (merchant: string) => {
+    setDraftMerchant(merchant);
+    try {
+      await createGuardianDraft(merchant);
+      setActions((await fetchActions()).actions);
+    } finally {
+      setDraftMerchant(null);
+    }
   }, []);
 
   const runSim = useCallback(async () => {
@@ -243,6 +261,17 @@ export default function Home() {
       </section>
 
       {lastDecision && <DecisionCard agent={lastDecision} />}
+
+      {/* ============ PHASE 7: Subscription Guardian ============ */}
+      <GuardianSection
+        guardian={guardian}
+        summary={guardianSummary}
+        actions={actions}
+        onApprove={onApprove}
+        onReject={onReject}
+        onCreateDraft={onCreateGuardianDraft}
+        draftMerchant={draftMerchant}
+      />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="space-y-5">
@@ -1007,5 +1036,193 @@ function TraceFlow({ activity }: { activity: ActivityStep[] }) {
         </li>
       </ol>
     </div>
+  );
+}
+
+/* ================== Subscription Guardian (Phase 7) ================= */
+
+function GuardianSection({
+  guardian, summary, actions, onApprove, onReject, onCreateDraft, draftMerchant,
+}: {
+  guardian: GuardianDetectResponse | null;
+  summary: GuardianSummaryResponse | null;
+  actions: ActionDraft[];
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+  onCreateDraft: (merchant: string) => void;
+  draftMerchant: string | null;
+}) {
+  if (!guardian) return null;
+  const changed = guardian.items.filter((i) => i.signal === "PRICE_INCREASE");
+  const draftFor = (merchant: string) =>
+    actions.find((a) => a.title.includes(merchant) && a.title.includes("Review"));
+
+  return (
+    <section className="mx-auto max-w-7xl px-5 pt-4 pb-1">
+      <div className="rounded-2xl border border-amber-500/25 bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950 p-5 sm:p-7">
+        {/* Header */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">
+            <Shield className="mr-1 size-3" /> subscription guardian
+          </Badge>
+          <Badge variant="outline" className="text-zinc-400">
+            finds recurring payments worth reviewing
+          </Badge>
+        </div>
+        <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+          FinPilot watches your recurring payments for price changes and flags
+          them for review. Every action is a draft — FinPilot will never cancel
+          or contact anyone automatically.
+          {summary && summary.changed_count > 0 && (
+            <span className="ml-2 font-medium text-amber-300">
+              {summary.changed_count} subscription{summary.changed_count > 1 ? "s" : ""} changed
+            </span>
+          )}
+        </p>
+
+        {changed.length === 0 && (
+          <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+            <p className="text-sm text-zinc-400">
+              No subscription price changes detected. Your recurring payments look stable.
+            </p>
+          </div>
+        )}
+
+        {changed.map((item) => {
+          const existing = draftFor(item.merchant);
+          const isCreating = draftMerchant === item.merchant;
+          return (
+            <div key={item.merchant} className="mt-4 space-y-3">
+              {/* Main card */}
+              <div className="rounded-xl border border-amber-500/20 bg-zinc-900/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="grid size-10 place-items-center rounded-xl bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30">
+                      <Zap className="size-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-zinc-100">{item.merchant}</h3>
+                      <p className="text-xs text-zinc-500">{item.category || "Subscription"} · {item.frequency}</p>
+                    </div>
+                  </div>
+                  <Badge variant={existing ? (existing.status === "approved" ? "default" : "secondary") : "destructive"}>
+                    {existing
+                      ? existing.status === "approved" ? "Approved" : existing.status === "rejected" ? "Rejected" : "Draft ready"
+                      : "Price increase detected"}
+                  </Badge>
+                </div>
+
+                {/* Amounts */}
+                <div className="mt-3 flex flex-wrap items-baseline gap-4">
+                  <div>
+                    <span className="text-xs text-zinc-500">Was</span>
+                    <span className="ml-1.5 text-sm font-semibold text-zinc-300">{inr(item.previous_amount)}/mo</span>
+                  </div>
+                  <ArrowUpRight className="size-4 text-amber-400" />
+                  <div>
+                    <span className="text-xs text-zinc-500">Now</span>
+                    <span className="ml-1.5 text-sm font-semibold text-zinc-100">{inr(item.current_amount)}/mo</span>
+                  </div>
+                  <div className="rounded-lg bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300">
+                    +{inr(item.increase_amount)}/mo
+                  </div>
+                  <div className="rounded-lg bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-300">
+                    +{inr(item.annual_increase)}/yr
+                  </div>
+                </div>
+
+                {/* Why flagged */}
+                <div className="mt-3 rounded-lg bg-zinc-800/50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Why this was flagged</p>
+                  <ul className="mt-1 space-y-1 text-sm text-zinc-300">
+                    <li className="flex items-center gap-2">
+                      <span className="text-amber-400">↑</span>
+                      <span>
+                        <strong>{inr(item.previous_amount)}</strong> → <strong>{inr(item.current_amount)}</strong>/month
+                        ({item.increase_percent?.toFixed(1)}% increase)
+                      </span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-red-400">+</span>
+                      <span>That&apos;s approximately <strong>{inr(item.annual_increase)}</strong>/year more</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-zinc-400">→</span>
+                      <span>Current annual cost: <strong>{inr(item.annual_cost)}</strong></span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Evidence */}
+                {item.evidence_refs?.length > 0 && (
+                  <div className="mt-2 text-[11px] text-zinc-600">
+                    Evidence: {item.evidence_refs.slice(0, 4).join(", ")}
+                    {item.evidence_refs.length > 4 && ` +${item.evidence_refs.length - 4} more`}
+                  </div>
+                )}
+              </div>
+
+              {/* Draft flow */}
+              {existing ? (
+                <div className="flex items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-800/30 p-3">
+                  {existing.status === "draft" && (
+                    <>
+                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500"
+                        onClick={() => onApprove(existing.id)}>
+                        <CheckCircle2 className="mr-1 size-3" /> Approve
+                      </Button>
+                      <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400"
+                        onClick={() => onReject(existing.id)}>
+                        <XCircle className="mr-1 size-3" /> Reject
+                      </Button>
+                    </>
+                  )}
+                  {existing.status !== "draft" && (
+                    <span className="text-xs text-zinc-500">
+                      {existing.status === "approved" ? "You approved this review" : "You rejected this review"}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-500"
+                  disabled={isCreating}
+                  onClick={() => onCreateDraft(item.merchant)}
+                >
+                  {isCreating ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Clock className="mr-1 size-3" />}
+                  {isCreating ? "Creating draft…" : "Review subscription"}
+                </Button>
+              )}
+
+              {/* Agent trace */}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                  <Activity className="size-3.5" /> Agent trace
+                </p>
+                <ol className="space-y-2">
+                  {[
+                    { label: "Subscription detected", detail: `recurring ${item.frequency} payment`, tone: "text-zinc-300" },
+                    { label: "Recurring payment analysis", detail: `${item.payment_count} historical payments`, tone: "text-zinc-300" },
+                    { label: "Price change verified", detail: `${inr(item.previous_amount)} → ${inr(item.current_amount)} confirmed by 2+ consecutive payments`, tone: "text-amber-300" },
+                    { label: "Annual impact calculated", detail: `${inr(item.increase_amount)}/mo × 12 = ${inr(item.annual_increase)}/yr`, tone: "text-amber-300" },
+                    { label: "Action draft created", detail: `Review ${item.merchant} price increase`, tone: "text-amber-300" },
+                    { label: "Waiting for approval", detail: "FinPilot will not execute automatically", tone: "text-zinc-500" },
+                  ].map((s, i) => (
+                    <li key={i} className="flex items-center gap-2 text-xs">
+                      <span className="grid size-4 place-items-center rounded-full bg-zinc-800">
+                        {i === 0 ? <Target className="size-3" /> : i === 5 ? <Clock className="size-3" /> : <Zap className="size-3" />}
+                      </span>
+                      <span className={s.tone}>{s.label}</span>
+                      <span className="ml-auto max-w-[45%] truncate text-[10px] text-zinc-600">{s.detail}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

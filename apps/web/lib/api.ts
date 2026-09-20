@@ -181,3 +181,48 @@ export const approveAction = (id: string) =>
   post<{ status: string }>(`/api/actions/${id}/approve`, {});
 export const rejectAction = (id: string) =>
   post<{ status: string }>(`/api/actions/${id}/reject`, {});
+
+// --- Subscription Guardian (Phase 7) ---
+
+export interface GuardianItem {
+  merchant: string; description: string; frequency: string;
+  category: string; monthly_cost: number; annual_cost: number;
+  previous_amount: number | null; current_amount: number | null;
+  increase_amount: number; increase_percent: number;
+  annual_increase: number;
+  signal: "PRICE_INCREASE" | "RECURRING_COST" | "HIGH_ANNUAL_COST";
+  additional_signals: string[];
+  latest_payment_date: string | null; latest_payment_amount: number;
+  previous_payment_date: string | null; previous_payment_amount: number | null;
+  payment_count: number; evidence_refs: string[];
+}
+
+export interface GuardianSummary {
+  changed_count: number; items_total: number;
+  recurring_monthly: number; annualized_recurring_cost: number;
+  signals: Record<string, number>;
+}
+
+export interface GuardianDetectResponse {
+  user_id: string; items: GuardianItem[];
+  summary: GuardianSummary;
+  policy: { executes: boolean; cancels: boolean; contacts: boolean; mutations: string[] };
+}
+
+export interface GuardianDraftResponse {
+  action_id: string; title: string; description: string;
+  status: string; merchant: string; signal: string;
+  previously_resolved?: boolean;
+}
+
+export interface GuardianSummaryResponse {
+  changed_count: number; items: { merchant: string; previous_amount: number;
+  current_amount: number; increase_amount: number; annual_increase: number }[];
+}
+
+export const fetchGuardian = (uid = DEMO_USER_ID) =>
+  get<GuardianDetectResponse>(`/api/guardian/detect?user_id=${uid}`);
+export const fetchGuardianSummary = (uid = DEMO_USER_ID) =>
+  get<GuardianSummaryResponse>(`/api/guardian/summary?user_id=${uid}`);
+export const createGuardianDraft = (merchant: string, uid = DEMO_USER_ID) =>
+  post<GuardianDraftResponse>(`/api/guardian/draft`, { user_id: uid, merchant });

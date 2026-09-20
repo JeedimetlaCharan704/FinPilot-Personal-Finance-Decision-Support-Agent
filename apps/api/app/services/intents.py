@@ -15,6 +15,14 @@ _INTENT_PATTERNS: list[tuple[str, re.Pattern, list[str]]] = [
      ["evaluate_affordability", "calculate_committed_budget", "get_financial_goals"]),
     ("rent_increase", re.compile(r"\brent\b.{0,20}increas|increas.{0,20}rent\b|\brent (goes up|hike)\b|\brent.*hike", re.I),
      ["get_monthly_summary", "simulate_expense_change", "calculate_committed_budget"]),
+    ("guardian", re.compile(
+        r"\bsubscription guardian\b|\bguard\b|\bprice (increase|hike)\b|"
+        r"\bsubscriptions? (changed|change|increased|increase|hiked|raised|go(es|ing)? up|went up|gone up)\b|"
+        r"\brecurring payments? (changed|change|increased|increase|hiked|raised|go(es|ing)? up|went up|gone up)\b|"
+        r"\breview.*(subscription|recurring)|"
+        r"\b(subscription|recurring).*worth (keeping|it)\b",
+        re.I),
+     ["guardian_detect", "get_recurring_payments", "get_monthly_summary"]),
     ("what_changed", re.compile(r"\b(changed|change|increased|increases|increase|compare|compared|versus|vs\b|last month|month over month|different|trend|go up|gone up|went up)\b", re.I),
      ["compare_periods", "get_monthly_summary", "detect_anomalies"]),
     ("committed", re.compile(r"\b(committed|already (tied|allocated|committed)|obligation|locked in|fixed (cost|expense))\b", re.I),
@@ -81,5 +89,6 @@ def intent_label(intent: str) -> str:
         "upcoming": "upcoming obligations",
         "goal_track": "goal progress",
         "anomaly": "anomaly detection",
+        "guardian": "subscription guardian",
         "overview": "monthly overview",
     }.get(intent, intent)

@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import actions, agent, analytics, db_health, health, simulations
+from app.routers import actions, agent, analytics, db_health, guardian, health, simulations
 
 settings = get_settings()
 
@@ -36,6 +36,7 @@ app.include_router(agent.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(simulations.router, prefix="/api")
 app.include_router(actions.router, prefix="/api")
+app.include_router(guardian.router, prefix="/api")
 
 
 @app.get("/", include_in_schema=False)
